@@ -36,7 +36,8 @@ _LOGGER = logging.getLogger(__name__)
 class ArrowheadAlarmConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Enhanced config flow for Arrowhead Alarm Panel with zone detection."""
 
-    VERSION = 2
+    VERSION = 4
+    MINOR_VERSION = 0
     CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_PUSH
 
     def __init__(self):
@@ -497,7 +498,7 @@ class ArrowheadAlarmOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(
                 "scan_interval",
                 default=self.config_entry.options.get("scan_interval", 30)
-            ): vol.All(vol.Coerce(int), vol.Range(min=10, max=300)),
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=300)),
             vol.Optional(
                 "timeout",
                 default=self.config_entry.options.get("timeout", 10)
