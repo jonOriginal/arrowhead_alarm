@@ -366,6 +366,7 @@ class ArrowheadClient:
 
     def _process_message(self, message: str) -> None:
         """Process incoming messages with protocol-aware parsing."""
+        _LOGGER.debug("Processing message: %s", message)
         try:
             if self._process_system_message(message):
                 return
@@ -432,6 +433,21 @@ class ArrowheadClient:
                 elif area_num == 2:
                     self._status["area_b_armed"] = True
                 self._status["status_message"] = f"Area {area_num} Armed"
+                return True
+            except ValueError:
+                pass
+
+        elif message.startswith("S") and len(message) >= 2:
+            try:
+                area_num = int(message[1:])
+                self._status["armed"] = True
+                self._status["arming"] = False
+                self._status["stay_mode"] = True
+                if area_num == 1:
+                    self._status["area_a_armed"] = True
+                elif area_num == 2:
+                    self._status["area_b_armed"] = True
+                self._status["status_message"] = f"Area {area_num} Armed Stay"
                 return True
             except ValueError:
                 pass
