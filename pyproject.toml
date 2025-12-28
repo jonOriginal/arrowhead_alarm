@@ -8,8 +8,8 @@ version = "1.0.0"
 description = "My lovely project"
 readme = "README.md"
 requires-python = ">=3.10"
-authors=[{name = "Jon", email = "Jonathan@telkode.com"}]
-license = {text = "GNU General Public License v3.0"}
+authors = [{ name = "Jon", email = "Jonathan@telkode.com" }]
+license = { file = "LICENSE" }
 
 [dependency-groups]
 linting = [
