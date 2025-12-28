@@ -3,7 +3,7 @@
 import pytest
 
 from elitecloud_alarm.types import AlarmMessage, ToggleEvent
-from elitecloud_alarm.util import parse_version_string
+from elitecloud_alarm.util import parse_version_string, split_complete_lines
 
 
 @pytest.mark.asyncio
@@ -108,29 +108,21 @@ class TestUtil:
         assert toggle_event.is_clear()
 
     async def test_split_complete_lines(self):
-        from custom_components.eci_alarm.util import split_complete_lines
-
         data = "line1\nline2\npartial_line"
         lines = split_complete_lines(data, delimiter="\n")
         assert lines == ["line1", "line2"]
 
     async def test_split_complete_lines_no_complete(self):
-        from custom_components.eci_alarm.util import split_complete_lines
-
         data = "partial_line"
         lines = split_complete_lines(data, delimiter="\r\n")
         assert lines == []
 
     async def test_split_complete_lines_different_delimiter(self):
-        from custom_components.eci_alarm.util import split_complete_lines
-
         data = "line1\r\nline2\r\npartial_line"
         lines = split_complete_lines(data, delimiter="\r\n")
         assert lines == ["line1", "line2"]
 
     async def test_split_complete_lines_empty_string(self):
-        from custom_components.eci_alarm.util import split_complete_lines
-
         data = ""
         lines = split_complete_lines(data, delimiter="\n")
         assert lines == []

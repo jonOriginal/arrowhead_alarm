@@ -74,7 +74,7 @@ async def open_mock(
 
 @pytest.mark.asyncio
 class TestSession:
-    async def test_login(self, socket_enabled: None):
+    async def test_login(self):
         host, port = await open_mock(login_server_handler)
         conn = EciSession(
             transport=TcpTransport(host, port),
@@ -87,7 +87,7 @@ class TestSession:
         finally:
             await conn.disconnect()
 
-    async def test_login_no_password_prompt(self, socket_enabled: None):
+    async def test_login_no_password_prompt(self):
         host, port = await open_mock(no_login_handler)
         conn = EciSession(
             transport=TcpTransport(host, port),
@@ -100,7 +100,7 @@ class TestSession:
         finally:
             await conn.disconnect()
 
-    async def test_login_no_password_prompt_with_creds(self, socket_enabled: None):
+    async def test_login_no_password_prompt_with_creds(self):
         host, port = await open_mock(no_login_handler)
         conn = EciSession(
             transport=TcpTransport(host, port),
@@ -113,7 +113,7 @@ class TestSession:
         finally:
             await conn.disconnect()
 
-    async def test_login_incorrect_credentials(self, socket_enabled: None):
+    async def test_login_incorrect_credentials(self):
         host, port = await open_mock(login_server_handler)
         conn = EciSession(
             transport=TcpTransport(host, port),
@@ -124,7 +124,7 @@ class TestSession:
             await conn.connect()
         await conn.disconnect()
 
-    async def test_panel_login_with_output_oscillation(self, socket_enabled: None):
+    async def test_panel_login_with_output_oscillation(self):
         host, port = await open_mock(panel_login_with_output_oscillation_handler)
         conn = EciSession(
             transport=TcpTransport(host, port),

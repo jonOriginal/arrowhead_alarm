@@ -19,8 +19,8 @@ from .types import (
 )
 
 
-async def create_client(
-    host: str, port: int, username: str | None, password: str | None
+def create_client(
+    host: str, port: int, username: str | None = None, password: str | None = None
 ) -> EciClient:
     """Create and connect an EciClient instance to the specified host and port.
 
@@ -33,6 +33,4 @@ async def create_client(
         creds = SerialCredentials(username, password)
     else:
         creds = None
-    client = EciClient(transport, creds)
-    await client.connect()
-    return client
+    return EciClient(transport, creds)

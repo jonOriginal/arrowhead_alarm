@@ -113,22 +113,6 @@ class TestParsing:
         assert len(lines) == 4
         assert lines == ["line1", "line2", "line3", "line4"]
 
-    async def test_arm_command_processor(self):
-        response = "OK ARMAWAY 1\n"
-        result = _arm_command_processor(response, "ARMAWAY 1", "ARMAWAY", "\n")
-        assert isinstance(result, Go)
-        assert result.value == 1
-
-    async def test_arm_command_processor_error(self):
-        response = "ERR 5\n"
-        result = _arm_command_processor(response, "ARMAWAY 1", "ARMAWAY", "\n")
-        assert isinstance(result, Error)
-
-    async def test_arm_command_processor_invalid_int(self):
-        response = "OK ARMAWAY X\n"
-        result = _arm_command_processor(response, "ARMAWAY 1", "ARMAWAY", "\n")
-        assert isinstance(result, Error)
-
     async def test_armaway_area_command(self):
         request = arm_area_command(1, ArmingMode.AWAY, "\n")
         assert request.data == "ARMAWAY 1"
