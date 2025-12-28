@@ -1,8 +1,9 @@
 ﻿"""Types for EliteCloud Alarm integration."""
+
 import asyncio
 from abc import ABC
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, IntFlag
 from typing import (
     Awaitable,
     Callable,
@@ -30,12 +31,35 @@ class SerialCredentials:
 class EciTransport(ABC):
     async def connect(self) -> None:
         raise NotImplementedError
+
     async def disconnect(self) -> None:
         raise NotImplementedError
+
     async def write(self, data: str) -> None:
         raise NotImplementedError
+
     async def read(self) -> str:
         raise NotImplementedError
+
+
+class ArmingCapabilities(IntFlag):
+    NONE = 0
+    INDIVIDUAL_AREA = 1 << 0
+    USER_ID_AND_PIN = 1 << 1
+    ONE_PUSH = 1 << 2
+
+
+class DisarmingCapabilities(IntFlag):
+    NONE = 0
+    INDIVIDUAL_AREA_WITH_USER_PIN = 1 << 0
+    USER_ID_AND_PIN = 1 << 1
+
+
+@dataclass
+class AlarmCapabilities:
+    all_zones_ready_status: bool = False
+    arming: ArmingCapabilities = ArmingCapabilities.NONE
+    disarming: DisarmingCapabilities = DisarmingCapabilities.NONE
 
 
 @dataclass

@@ -2,8 +2,6 @@
 
 import asyncio
 import logging
-from dataclasses import dataclass
-from enum import IntFlag
 from typing import Any, Awaitable, Callable, Coroutine, Dict
 
 from .commands import (
@@ -21,11 +19,15 @@ from .const import (
     DEFAULT_VIRTUAL_KEYPAD_NUM,
 )
 from .session import EciSession
+from .transport import TcpTransport
 from .types import (
+    AlarmCapabilities,
     AlarmMessage,
     AlarmUser,
     Area,
+    ArmingCapabilities,
     ArmingMode,
+    DisarmingCapabilities,
     EciTransport,
     Output,
     PanelStatus,
@@ -39,48 +41,25 @@ from .util import is_mode_4_supported
 _LOGGER = logging.getLogger(__name__)
 
 
-class _ArmingCapabilities(IntFlag):
-    NONE = 0
-    INDIVIDUAL_AREA = 1 << 0
-    USER_ID_AND_PIN = 1 << 1
-    ONE_PUSH = 1 << 2
-
-
-class _DisarmingCapabilities(IntFlag):
-    NONE = 0
-    INDIVIDUAL_AREA_WITH_USER_PIN = 1 << 0
-    USER_ID_AND_PIN = 1 << 1
-
-
-@dataclass
-class _AlarmCapabilities:
-    all_zones_ready_status: bool = False
-    arming: _ArmingCapabilities = _ArmingCapabilities.NONE
-    disarming: _DisarmingCapabilities = _DisarmingCapabilities.NONE
-
-
-def _capabilities_from_mode(mode: ProtocolMode) -> _AlarmCapabilities:
-    capabilities = _AlarmCapabilities()
+def _capabilities_from_mode(mode: ProtocolMode) -> AlarmCapabilities:
+    capabilities = AlarmCapabilities()
     match mode:
         case ProtocolMode.MODE_1:
             capabilities.all_zones_ready_status = True
             capabilities.arming = (
-                _ArmingCapabilities.USER_ID_AND_PIN | _ArmingCapabilities.ONE_PUSH
+                ArmingCapabilities.USER_ID_AND_PIN | ArmingCapabilities.ONE_PUSH
             )
-            capabilities.disarming = _DisarmingCapabilities.USER_ID_AND_PIN
+            capabilities.disarming = DisarmingCapabilities.USER_ID_AND_PIN
         case ProtocolMode.MODE_2:
             capabilities.all_zones_ready_status = False
-            capabilities.arming = _ArmingCapabilities.INDIVIDUAL_AREA
-            capabilities.disarming = (
-                _DisarmingCapabilities.INDIVIDUAL_AREA_WITH_USER_PIN
-            )
+            capabilities.arming = ArmingCapabilities.INDIVIDUAL_AREA
+            capabilities.disarming = DisarmingCapabilities.INDIVIDUAL_AREA_WITH_USER_PIN
         case ProtocolMode.MODE_4:
             capabilities.all_zones_ready_status = False
             capabilities.arming = (
-                _ArmingCapabilities.INDIVIDUAL_AREA
-                | _ArmingCapabilities.USER_ID_AND_PIN
+                ArmingCapabilities.INDIVIDUAL_AREA | ArmingCapabilities.USER_ID_AND_PIN
             )
-            capabilities.disarming = _DisarmingCapabilities.USER_ID_AND_PIN
+            capabilities.disarming = DisarmingCapabilities.USER_ID_AND_PIN
         case _:
             raise NotImplementedError
     return capabilities
@@ -118,7 +97,7 @@ class EciClient:
         self.panel_version: PanelVersion | None = None
         self.supports_rf = False
         self.mode: ProtocolMode | None = None
-        self.capabilities: _AlarmCapabilities | None = None
+        self.capabilities: AlarmCapabilities | None = None
 
         # Zone states
         self.zones: Dict[int, Zone] = {i: Zone() for i in range(1, self.max_zones + 1)}
