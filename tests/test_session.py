@@ -6,6 +6,7 @@ import pytest
 
 from arrowhead_alarm.session import EciSession, Login
 from arrowhead_alarm.transport import TcpTransport
+# ruff: noqa
 
 
 def login_server_handler(reader: StreamReader, writer: StreamWriter):

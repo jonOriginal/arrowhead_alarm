@@ -8,12 +8,12 @@ from typing import Any, Final, Mapping, TypeVar
 
 from .exceptions import (
     CommandError,
-    CommandNotAllowed,
-    CommandNotUnderstood,
-    InvalidParameter,
-    RxBufferOverflow,
-    TxBufferOverflow,
-    XModemSessionFailed,
+    CommandNotAllowedError,
+    CommandNotUnderstoodError,
+    InvalidParameterError,
+    RxBufferOverflowError,
+    TxBufferOverflowError,
+    XModemSessionFailedError,
 )
 from .types import (
     AlarmCapabilities,
@@ -108,17 +108,17 @@ def get_command_exception(error_code: int, command: str, response: str) -> Excep
     """
     match error_code:
         case 1:
-            return CommandNotUnderstood(command, response)
+            return CommandNotUnderstoodError(command, response)
         case 2:
-            return InvalidParameter(command, response)
+            return InvalidParameterError(command, response)
         case 3:
-            return CommandNotAllowed(command, response)
+            return CommandNotAllowedError(command, response)
         case 4:
-            return RxBufferOverflow(command, response)
+            return RxBufferOverflowError(command, response)
         case 5:
-            return TxBufferOverflow(command, response)
+            return TxBufferOverflowError(command, response)
         case 6:
-            return XModemSessionFailed(command, response)
+            return XModemSessionFailedError(command, response)
         case _:
             return CommandError(f"Unknown error code {error_code}", command, response)
 

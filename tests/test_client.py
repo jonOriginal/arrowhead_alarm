@@ -1,4 +1,6 @@
-﻿import asyncio
+﻿# ruff: noqa
+
+import asyncio
 from _asyncio import Task
 from asyncio import StreamReader, StreamWriter
 from typing import Awaitable, Callable

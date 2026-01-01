@@ -1,4 +1,5 @@
 ﻿"""Tests for elitecloud_alarm.messages module."""
+# ruff: noqa
 
 import pytest
 

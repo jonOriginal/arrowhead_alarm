@@ -1,4 +1,6 @@
-﻿import asyncio
+﻿# ruff: noqa
+
+import asyncio
 from typing import Callable, TypeVar
 
 import pytest
@@ -13,7 +15,6 @@ from arrowhead_alarm.types import (
     ProtocolMode,
     Request,
 )
-from arrowhead_alarm.util import get_delimiter_for_mode
 
 T = TypeVar("T")
 

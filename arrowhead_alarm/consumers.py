@@ -196,7 +196,7 @@ def line_consumer(delimiter: str) -> Tuple[Consumer[str], Future[str]]:
 def string_options_consumer(
     *args: str, case_sensitive: bool = True
 ) -> Tuple[Consumer[str], Future[str]]:
-    """Return a consumer and future that checks the data against a list of string options.
+    """Return a consumer and future that checks the data against list of options.
 
     Args:
         *args: Valid string options.

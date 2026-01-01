@@ -1,5 +1,6 @@
 ﻿"""Tests for the ECI Alarm parsing and command processing."""
 
+# ruff: noqa
 # pyright: reportPrivateUsage=false
 import asyncio
 
