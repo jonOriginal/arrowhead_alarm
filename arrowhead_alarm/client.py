@@ -79,7 +79,7 @@ class EciClient:
         """Return current panel status."""
         return self._state
 
-    def generate_default_zones(self) -> Dict[int, Zone]:
+    def _generate_default_zones(self) -> Dict[int, Zone]:
         """Generate default zones based on default constants."""
         return {
             i: Zone(
@@ -95,14 +95,14 @@ class EciClient:
             for i in range(1, DEFAULT_MAX_ZONES + 1)
         }
 
-    def generate_default_areas(self) -> Dict[int, Area]:
+    def _generate_default_areas(self) -> Dict[int, Area]:
         """Generate default areas based on default constants."""
         return {
             i: Area(area_number=i, state=AlarmState.DISARMED, ready_to_arm=True)
             for i in range(1, DEFAULT_MAX_AREAS + 1)
         }
 
-    def generate_expanders(self, count: int) -> Dict[int, Expander]:
+    def _generate_expanders(self, count: int) -> Dict[int, Expander]:
         """Generate default expanders based on default constants."""
         return {
             i: Expander(
@@ -115,7 +115,7 @@ class EciClient:
             for i in range(1, count + 1)
         }
 
-    def generate_default_outputs(self) -> Dict[int, Output]:
+    def _generate_default_outputs(self) -> Dict[int, Output]:
         """Generate default outputs based on default constants."""
         return {
             i: Output(output_number=i, on=False)
@@ -139,12 +139,12 @@ class EciClient:
             pendant_battery_fault=None,
             rf_battery_low=None,
             sensor_watch_alarm=None,
-            zones=self.generate_default_zones(),
-            outputs=self.generate_default_outputs(),
-            areas=self.generate_default_areas(),
-            zone_expanders=self.generate_expanders(ZONE_EXPANDER_COUNT),
-            output_expanders=self.generate_expanders(OUTPUT_EXPANDER_COUNT),
-            prox_expanders=self.generate_expanders(PROX_EXPANDER_COUNT),
+            zones=self._generate_default_zones(),
+            outputs=self._generate_default_outputs(),
+            areas=self._generate_default_areas(),
+            zone_expanders=self._generate_expanders(ZONE_EXPANDER_COUNT),
+            output_expanders=self._generate_expanders(OUTPUT_EXPANDER_COUNT),
+            prox_expanders=self._generate_expanders(PROX_EXPANDER_COUNT),
         )
 
     async def connect(self) -> None:

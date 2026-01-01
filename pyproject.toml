@@ -4,15 +4,34 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arrowhead_alarm"
-version = "1.1.0"
+version = "1.1.1"
 description = "A library for interacting with arrowhead alarm systems."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
+
 authors = [{ name = "Jon", email = "Jonathan@telkode.com" }]
 license = { file = "LICENSE" }
-dependencies = [
-    "failure>=1.0.1",
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python"
 ]
+
+keywords = [
+    "arrowhead",
+    "alarm",
+    "security",
+    "iot",
+    "home-automation"
+]
+
+[project.urls]
+Repository = "https://github.com/jonOriginal/arrowhead_alarm"
+Issues = "https://github.com/jonOriginal/arrowhead_alarm/issues"
 
 [dependency-groups]
 linting = [
