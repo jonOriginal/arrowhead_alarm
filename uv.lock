@@ -3,6 +3,41 @@ revision = 3
 requires-python = ">=3.10"
 
 [[package]]
+name = "arrowhead-alarm"
+version = "1.0.0"
+source = { editable = "." }
+dependencies = [
+    { name = "failure" },
+]
+
+[package.dev-dependencies]
+linting = [
+    { name = "ruff" },
+]
+tests = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-mock" },
+]
+typing = [
+    { name = "ty" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "failure", specifier = ">=1.0.1" }]
+
+[package.metadata.requires-dev]
+linting = [{ name = "ruff", specifier = ">=0.14.10" }]
+tests = [
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-mock", specifier = ">=3.15.1" },
+]
+typing = [{ name = "ty", specifier = ">=0.0.7" }]
+
+[[package]]
 name = "backports-asyncio-runner"
 version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -135,41 +170,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/31/e2/a45b5a62014593752
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9c/ca/863ed8fa66d6f986de6ad7feccc5df96e37400845b1eeb29889a70feea99/debtcollector-3.0.0-py3-none-any.whl", hash = "sha256:46f9dacbe8ce49c47ebf2bf2ec878d50c9443dfae97cc7b8054be684e54c3e91", size = 23035, upload-time = "2024-02-22T15:39:18.99Z" },
 ]
-
-[[package]]
-name = "elitecloud-alarm"
-version = "1.0.0"
-source = { editable = "." }
-dependencies = [
-    { name = "failure" },
-]
-
-[package.dev-dependencies]
-linting = [
-    { name = "ruff" },
-]
-tests = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-mock" },
-]
-typing = [
-    { name = "ty" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "failure", specifier = ">=1.0.1" }]
-
-[package.metadata.requires-dev]
-linting = [{ name = "ruff", specifier = ">=0.14.10" }]
-tests = [
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-asyncio", specifier = ">=1.3.0" },
-    { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "pytest-mock", specifier = ">=3.15.1" },
-]
-typing = [{ name = "ty", specifier = ">=0.0.7" }]
 
 [[package]]
 name = "exceptiongroup"
