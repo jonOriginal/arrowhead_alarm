@@ -23,7 +23,7 @@ from arrowhead_alarm.transformers import wait_lines
 from arrowhead_alarm.types import ArmingMode
 
 
-def processor(response: str) -> FlowResult[list[str]]:
+def line_processor(response: str) -> FlowResult[list[str]]:
     lines = response.splitlines()
     if len(lines) >= 2:
         return Go(lines)
@@ -32,7 +32,7 @@ def processor(response: str) -> FlowResult[list[str]]:
 
 @pytest.mark.asyncio
 async def test_timer_consumer():
-    consumer, fut = create_sliding_timeout_consumer(processor, timeout=1.0)
+    consumer, fut = create_sliding_timeout_consumer(line_processor, timeout=1.0)
     consumer("line1\nline2\n")
     result = await fut
 
@@ -42,7 +42,7 @@ async def test_timer_consumer():
 
 @pytest.mark.asyncio
 async def test_timer_consumer_multiple_feeds():
-    consumer, fut = create_sliding_timeout_consumer(processor, timeout=1.0)
+    consumer, fut = create_sliding_timeout_consumer(line_processor, timeout=1.0)
     consumer("line1\nline2\n")
     await asyncio.sleep(0.5)
     consumer("line3\nline4\nline5\n")
@@ -54,9 +54,9 @@ async def test_timer_consumer_multiple_feeds():
 
 @pytest.mark.asyncio
 async def test_timer_consumer_timeout():
-    consumer, fut = create_sliding_timeout_consumer(processor, timeout=0.5)
+    consumer, fut = create_sliding_timeout_consumer(line_processor, timeout=0.5)
     consumer("line1\n")
-    with pytest.raises(asyncio.TimeoutError):
+    with pytest.raises(TimeoutError):
         await fut
 
 

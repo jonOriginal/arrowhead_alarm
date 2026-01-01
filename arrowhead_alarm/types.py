@@ -14,8 +14,9 @@ from typing import (
     TypeAlias,
     TypeVar,
     Union,
-    override,
 )
+
+from typing_extensions import override
 
 
 @dataclass

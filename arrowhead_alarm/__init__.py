@@ -20,6 +20,7 @@ from .types import (
 __all__ = [
     "PanelState",
     "AlarmState",
+    "create_tcp_client",
     "Area",
     "Zone",
     "Output",

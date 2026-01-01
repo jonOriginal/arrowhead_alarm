@@ -1,9 +1,9 @@
 ﻿"""Asyncio-based connection to Arrowhead alarm system over IP."""
-
 import asyncio
 import logging
-import typing
-from typing import override
+from typing import TypeVar
+
+from typing_extensions import override
 
 from arrowhead_alarm.const import DEF_ENCODING, DEF_READ_LENGTH
 
@@ -11,7 +11,7 @@ from .types import EciTransport
 
 _LOGGER = logging.getLogger(__name__)
 
-T = typing.TypeVar("T")
+T = TypeVar("T")
 
 
 class TcpTransport(EciTransport):
