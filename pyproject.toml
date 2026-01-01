@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arrowhead_alarm"
-version = "1.0.0"
+version = "1.1.0"
 description = "A library for interacting with arrowhead alarm systems."
 readme = "README.md"
 requires-python = ">=3.10"
