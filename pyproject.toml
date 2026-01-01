@@ -3,9 +3,9 @@ requires = ["hatchling >= 1.26"]
 build-backend = "hatchling.build"
 
 [project]
-name = "elitecloud_alarm"
+name = "arrowhead_alarm"
 version = "1.0.0"
-description = "My lovely project"
+description = "A library for interacting with arrowhead alarm systems."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Jon", email = "Jonathan@telkode.com" }]

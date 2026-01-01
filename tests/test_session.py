@@ -4,8 +4,8 @@ from typing import Awaitable, Callable
 
 import pytest
 
-from elitecloud_alarm.session import EciSession, Login
-from elitecloud_alarm.transport import TcpTransport
+from arrowhead_alarm.session import EciSession, Login
+from arrowhead_alarm.transport import TcpTransport
 
 
 def login_server_handler(reader: StreamReader, writer: StreamWriter):

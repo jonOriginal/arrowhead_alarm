@@ -1,11 +1,11 @@
-﻿"""Asyncio-based connection to Eci alarm system over IP."""
+﻿"""Asyncio-based connection to Arrowhead alarm system over IP."""
 
 import asyncio
 import logging
 import typing
 from typing import override
 
-from elitecloud_alarm.const import DEF_ENCODING, DEF_READ_LENGTH
+from arrowhead_alarm.const import DEF_ENCODING, DEF_READ_LENGTH
 
 from .types import EciTransport
 
@@ -15,7 +15,7 @@ T = typing.TypeVar("T")
 
 
 class TcpTransport(EciTransport):
-    """Asyncio-based TCP transport for Eci alarm system."""
+    """Asyncio-based TCP transport for Arrowhead alarm system."""
 
     def __init__(
         self,
@@ -27,7 +27,7 @@ class TcpTransport(EciTransport):
         """Initialize the Tcp Transport.
 
         Args:
-            host: IP address or hostname of the Eci alarm panel.
+            host: IP address or hostname of the Arrowhead alarm panel.
             port: TCP port number to connect to.
             encoding: The encoding used for messages, defaults to 'ascii'.
             connect_timeout: Timeout for establishing the connection in seconds.

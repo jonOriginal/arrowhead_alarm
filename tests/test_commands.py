@@ -3,17 +3,17 @@ from typing import Callable, TypeVar
 
 import pytest
 
-from elitecloud_alarm import commands
-from elitecloud_alarm.commands import (
+from arrowhead_alarm import commands
+from arrowhead_alarm.commands import (
     mode_command,
     set_output_state_command,
 )
-from elitecloud_alarm.types import (
+from arrowhead_alarm.types import (
     ArmingMode,
     ProtocolMode,
     Request,
 )
-from elitecloud_alarm.util import get_delimiter_for_mode
+from arrowhead_alarm.util import get_delimiter_for_mode
 
 T = TypeVar("T")
 

@@ -1,4 +1,4 @@
-﻿"""Types for EliteCloud Alarm integration."""
+﻿"""Types for Arrowhead alarm integration."""
 
 import asyncio
 from abc import ABC, abstractmethod
@@ -46,7 +46,7 @@ class Login:
 
 
 class EciTransport(ABC):
-    """Abstract base class for Eci alarm panel transport."""
+    """Abstract base class for Arrowhead alarm panel transport."""
 
     @abstractmethod
     async def connect(self) -> None:

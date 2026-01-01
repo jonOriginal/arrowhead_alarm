@@ -1,4 +1,4 @@
-﻿"""Constants for the EliteCloud Alarm integration."""
+﻿"""Constants for the Arrowhead alarm integration."""
 
 DEF_ENCODING = "ascii"
 DEF_READ_LENGTH = 1024

@@ -1,12 +1,12 @@
-﻿"""Common transformers for EliteCloud Alarm protocol processing."""
+﻿"""Common transformers for Arrowhead alarm protocol processing."""
 
 from typing import Callable, TypeVar
 
-from elitecloud_alarm.const import COMMAND_ERROR_PREFIX, COMMAND_OK_PREFIX
-from elitecloud_alarm.messages import (
+from arrowhead_alarm.const import COMMAND_ERROR_PREFIX, COMMAND_OK_PREFIX
+from arrowhead_alarm.messages import (
     get_status_operation,
 )
-from elitecloud_alarm.types import (
+from arrowhead_alarm.types import (
     Error,
     FlowResult,
     Go,
@@ -17,7 +17,7 @@ from elitecloud_alarm.types import (
     Transformer,
     Wait,
 )
-from elitecloud_alarm.util import (
+from arrowhead_alarm.util import (
     get_command_exception,
     parse_panel_version_string,
     parse_status,

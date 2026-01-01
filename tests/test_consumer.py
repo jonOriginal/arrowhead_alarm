@@ -5,11 +5,11 @@ import asyncio
 
 import pytest
 
-from elitecloud_alarm.commands import (
+from arrowhead_alarm.commands import (
     arm_area_command,
     arm_user_command,
 )
-from elitecloud_alarm.consumers import (
+from arrowhead_alarm.consumers import (
     Error,
     FlowResult,
     Go,
@@ -18,8 +18,8 @@ from elitecloud_alarm.consumers import (
     create_sliding_timeout_consumer,
     line_consumer,
 )
-from elitecloud_alarm.transformers import wait_lines
-from elitecloud_alarm.types import ArmingMode
+from arrowhead_alarm.transformers import wait_lines
+from arrowhead_alarm.types import ArmingMode
 
 
 def processor(response: str) -> FlowResult[list[str]]:

@@ -1,4 +1,4 @@
-﻿"""Utility functions for Eci Alarm integration."""
+﻿"""Utility functions for Arrowhead alarm integration."""
 
 import asyncio
 import logging

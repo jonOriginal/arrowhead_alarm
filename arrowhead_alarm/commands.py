@@ -1,4 +1,4 @@
-﻿"""Commands for interacting with the Eci alarm panel."""
+﻿"""Commands for interacting with the Arrowhead alarm panel."""
 
 from typing import Callable, TypeVar
 
@@ -127,7 +127,6 @@ def mode_command(mode: ProtocolMode) -> Request[str]:
 
     Args:
         mode: Protocol mode to set.
-        delimiter: Line delimiter used in the protocol. e.g. "\r\n"
 
     Returns:
         Request object that, when sent, will set the protocol mode and return \

@@ -1,4 +1,4 @@
-"""Client for ECi alarm systems."""
+"""Client for Arrowhead alarm systems."""
 
 import asyncio
 import logging
@@ -48,12 +48,12 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EciClient:
-    """Client for ECi alarm systems over IP."""
+    """Client for Arrowhead alarm systems over IP."""
 
     def __init__(
         self, transport: EciTransport, credentials: Login | None = None
     ) -> None:
-        """Initialize the Eci alarm client.
+        """Initialize the Arrowhead alarm client.
 
         Args:
             transport: Transport layer for communication
@@ -283,11 +283,12 @@ class EciClient:
             _LOGGER.error("Error sending DISARM command: %s", err)
             raise
 
-    async def bypass_zone(self, zone_number: int) -> None:
+    async def set_zone_bypass(self, zone_number: int, bypass: bool) -> None:
         """Bypass a zone.
 
         Args:
             zone_number: Zone number to bypass.
+            bypass: True to bypass, False to unbypass.
 
         """
         if zone_number not in self._state.zones:
@@ -295,7 +296,7 @@ class EciClient:
             raise ValueError("Invalid zone number %d", zone_number)
         try:
             _LOGGER.debug("Sending BYPASS command for zone %d", zone_number)
-            req = set_zone_bypass_command(zone_number, self.delimiter)
+            req = set_zone_bypass_command(zone_number, bypass, self.delimiter)
             resp = await self._session.request(req)
             _LOGGER.debug("BYPASS command response: %r", resp)
             self._state.zones[zone_number].bypassed = True
@@ -303,22 +304,7 @@ class EciClient:
             _LOGGER.error("Error bypassing zone %d: %s", zone_number, err)
             raise
 
-    async def unbypass_zone(self, zone_number: int) -> None:
-        """Remove bypass from a zone."""
-        _LOGGER.info("Sending unbypass command for zone %d", zone_number)
-        if zone_number not in self._state.zones:
-            _LOGGER.warning("Zone number %d is not valid for this panel", zone_number)
-            return
-        try:
-            req = set_zone_bypass_command(zone_number, self.delimiter)
-            resp = await self._session.request(req)
-            _LOGGER.debug("UNBYPASS command response: %r", resp)
-            self._state.zones[zone_number].bypassed = False
-        except Exception as err:
-            _LOGGER.error("Error unbypassing zone %d: %s", zone_number, err)
-            raise
-
-    async def change_output_state(self, output_number: int, on: bool) -> None:
+    async def set_output_state(self, output_number: int, on: bool) -> None:
         """Turn output on permanently."""
         _LOGGER.info("Turning on output %d", output_number)
         if output_number > len(self._state.outputs):

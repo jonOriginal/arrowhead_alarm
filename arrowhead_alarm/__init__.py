@@ -1,6 +1,6 @@
-﻿"""EliteCloud Alarm Integration."""
+﻿"""Arrowhead alarm Integration."""
 
-from elitecloud_alarm.transport import TcpTransport
+from arrowhead_alarm.transport import TcpTransport
 
 from .client import EciClient
 from .types import (
@@ -39,8 +39,8 @@ def create_tcp_client(
     """Create an EciClient instance.
 
     Args:
-        host: Hostname or IP address of the Eci alarm panel.
-        port: TCP port number of the Eci alarm panel.
+        host: Hostname or IP address of the Arrowhead alarm panel.
+        port: TCP port number of the Arrowhead alarm panel.
         username: Username for authentication.
         password: Password for authentication.
 

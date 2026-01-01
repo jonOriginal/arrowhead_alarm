@@ -5,7 +5,7 @@ from typing import Awaitable, Callable
 
 import pytest
 
-from elitecloud_alarm import VersionInfo, create_tcp_client
+from arrowhead_alarm import VersionInfo, create_tcp_client
 
 
 def no_login_handler(reader: StreamReader, writer: StreamWriter) -> Task[None]:

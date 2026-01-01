@@ -2,7 +2,7 @@
 
 from typing import Callable, Final
 
-from elitecloud_alarm.types import (
+from arrowhead_alarm.types import (
     EXPANDER_STATUS,
     NUMBERED_STATUS,
     STATUS_CODE,

@@ -2,8 +2,8 @@
 
 import pytest
 
-from elitecloud_alarm.types import ToggleEvent
-from elitecloud_alarm.util import parse_panel_version_string, split_complete_lines
+from arrowhead_alarm.types import ToggleEvent
+from arrowhead_alarm.util import parse_panel_version_string, split_complete_lines
 
 
 def test_version_parsing():

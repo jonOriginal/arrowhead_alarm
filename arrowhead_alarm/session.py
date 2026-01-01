@@ -1,4 +1,4 @@
-﻿"""Manages an authenticated session with an Eci alarm panel over TCP."""
+﻿"""Manages an authenticated session with an Arrowhead alarm panel over TCP."""
 
 import asyncio
 import logging
@@ -31,7 +31,7 @@ T = TypeVar("T")
 
 
 class EciSession:
-    """Manages an authenticated session with an Eci alarm panel."""
+    """Manages an authenticated session with an Arrowhead alarm panel."""
 
     def __init__(
         self, transport: EciTransport, credentials: Login | None = None
@@ -267,7 +267,7 @@ class EciSession:
         """Handle authentication based on initial prompts."""
         consumer, future = string_options_consumer(AUTH_WELCOME_MSG, AUTH_LOGIN_MSG)
         try:
-            async with self._read_context_raw(callback=consumer):
+            async with self._read_context_raw(consumer):
                 resp = await future
         except ConnectionError as e:
             _LOGGER.error("Authentication detection failed: connection reset")

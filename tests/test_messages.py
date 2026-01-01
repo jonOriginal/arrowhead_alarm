@@ -2,8 +2,8 @@
 
 import pytest
 
-from elitecloud_alarm.types import StatusFlags
-from elitecloud_alarm.util import parse_status
+from arrowhead_alarm.types import StatusFlags
+from arrowhead_alarm.util import parse_status
 
 
 @pytest.mark.parametrize(
