@@ -87,8 +87,8 @@ def test_parse_extender_status(message: str, ext_code: str, ext_number: int) -> 
 
     assert status.expander_code == ext_code
     assert status.expander_number == ext_number
-    assert status.flags & StatusFlags.EXTENDER_CODE
-    assert status.flags & StatusFlags.EXTENDER_NUMBER
+    assert status.flags & StatusFlags.EXPANDER_CODE
+    assert status.flags & StatusFlags.EXPANDER_NUMBER
 
 
 def test_parse_full_combination() -> None:
@@ -104,8 +104,8 @@ def test_parse_full_combination() -> None:
         StatusFlags.CODE
         | StatusFlags.NUMBER
         | StatusFlags.USER_NUMBER
-        | StatusFlags.EXTENDER_CODE
-        | StatusFlags.EXTENDER_NUMBER
+        | StatusFlags.EXPANDER_CODE
+        | StatusFlags.EXPANDER_NUMBER
     )
 
 

@@ -233,15 +233,15 @@ class PanelState:
     battery_fault: bool
     mains_fault: bool
     tamper_alarm_triggered: bool
-    line_ok: bool
+    line_fault: bool
     dialer_fault: bool
     dialer_line_fault: bool
     fuse_fault: bool
     monitoring_station_active: bool
     dialer_active: bool
     code_tamper: bool
-    receiver_ok: bool | None
-    pendant_battery_ok: bool | None
+    receiver_fault: bool | None
+    pendant_battery_fault: bool | None
     rf_battery_low: bool | None
     sensor_watch_alarm: bool | None
     zones: Dict[int, Zone]

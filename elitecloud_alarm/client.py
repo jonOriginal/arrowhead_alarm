@@ -8,12 +8,11 @@ from .commands import (
     arm_area_command,
     arm_no_pin_command,
     arm_user_command,
-    bypass_zone_command,
     disarm_user_command,
+    get_output_state_command,
     mode_command,
-    output_off_command,
-    output_on_command,
-    output_state_command,
+    set_output_state_command,
+    set_zone_bypass_command,
     status_command,
     version_command,
 )
@@ -129,15 +128,15 @@ class EciClient:
             battery_fault=False,
             mains_fault=False,
             tamper_alarm_triggered=False,
-            line_ok=False,
+            line_fault=False,
             dialer_fault=False,
             dialer_line_fault=False,
             fuse_fault=False,
             monitoring_station_active=False,
             dialer_active=False,
             code_tamper=False,
-            receiver_ok=None,
-            pendant_battery_ok=None,
+            receiver_fault=None,
+            pendant_battery_fault=None,
             rf_battery_low=None,
             sensor_watch_alarm=None,
             zones=self.generate_default_zones(),
@@ -296,7 +295,7 @@ class EciClient:
             raise ValueError("Invalid zone number %d", zone_number)
         try:
             _LOGGER.debug("Sending BYPASS command for zone %d", zone_number)
-            req = bypass_zone_command(zone_number, self.delimiter)
+            req = set_zone_bypass_command(zone_number, self.delimiter)
             resp = await self._session.request(req)
             _LOGGER.debug("BYPASS command response: %r", resp)
             self._state.zones[zone_number].bypassed = True
@@ -311,7 +310,7 @@ class EciClient:
             _LOGGER.warning("Zone number %d is not valid for this panel", zone_number)
             return
         try:
-            req = bypass_zone_command(zone_number, self.delimiter)
+            req = set_zone_bypass_command(zone_number, self.delimiter)
             resp = await self._session.request(req)
             _LOGGER.debug("UNBYPASS command response: %r", resp)
             self._state.zones[zone_number].bypassed = False
@@ -319,7 +318,7 @@ class EciClient:
             _LOGGER.error("Error unbypassing zone %d: %s", zone_number, err)
             raise
 
-    async def turn_output_on(self, output_number: int) -> None:
+    async def change_output_state(self, output_number: int, on: bool) -> None:
         """Turn output on permanently."""
         _LOGGER.info("Turning on output %d", output_number)
         if output_number > len(self._state.outputs):
@@ -329,30 +328,12 @@ class EciClient:
                 len(self._state.outputs),
             )
         try:
-            req = output_on_command(output_number, self.delimiter)
+            req = set_output_state_command(output_number, on, self.delimiter)
             resp = await self._session.request(req)
             _LOGGER.debug("OUTPUTON command response: %r", resp)
             self._state.outputs[output_number].on = True
         except Exception as err:
             _LOGGER.error("Error turning on output %d: %s", output_number, err)
-            raise
-
-    async def turn_output_off(self, output_number: int) -> None:
-        """Turn output off."""
-        _LOGGER.info("Turning off output %d", output_number)
-        if output_number > len(self._state.outputs):
-            _LOGGER.warning(
-                "Output number %d exceeds max outputs %d",
-                output_number,
-                len(self._state.outputs),
-            )
-        try:
-            req = output_off_command(output_number, self.delimiter)
-            resp = await self._session.request(req)
-            _LOGGER.debug("OUTPUTOFF command response: %r", resp)
-            self._state.outputs[output_number].on = False
-        except Exception as err:
-            _LOGGER.error("Error turning off output %d: %s", output_number, err)
             raise
 
     async def get_output_state(self, output_number: int) -> bool:
@@ -365,7 +346,7 @@ class EciClient:
                 len(self._state.outputs),
             )
         try:
-            req = output_state_command(output_number, self.delimiter)
+            req = get_output_state_command(output_number, self.delimiter)
             resp = await self._session.request(req)
             _LOGGER.debug("OUTPUTSTATE command response: %r", resp)
             self._state.outputs[output_number].on = resp

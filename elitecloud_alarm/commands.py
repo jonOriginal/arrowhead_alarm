@@ -2,8 +2,6 @@
 
 from typing import Callable, TypeVar
 
-from elitecloud_alarm import PanelState
-
 from .consumers import (
     create_future_consumer,
     create_line_join_transformer,
@@ -19,7 +17,6 @@ from .transformers import (
     on_off_boolean_transformer,
     panel_state_message_transformer,
     panel_version_transformer,
-    result_discard_transformer,
     wait_any_complete_lines,
     wait_line,
     wait_lines,
@@ -29,9 +26,9 @@ from .types import (
     Error,
     FlowResult,
     Go,
+    PanelState,
     PanelVersion,
     ProtocolMode,
-    Reject,
     Request,
     Transformer,
 )
@@ -321,21 +318,23 @@ def status_command(delimiter: str) -> Request[list[Callable[[PanelState], None]]
     return Request(data=cmd_str, response_callback=listener, awaitable=fut)
 
 
-def bypass_zone_command(zone_id: int, delimiter: str) -> Request[int]:
-    r"""Return a request that bypasses a zone.
+def set_zone_bypass_command(zone_id: int, bypass: bool, delimiter: str) -> Request[int]:
+    r"""Return a request that bypasses or unbypasses a zone.
 
     Args:
         zone_id: Positive integer representing the zone ID.
+        bypass: Boolean indicating whether to bypass (True) or unbypass (False) the
         delimiter: Line delimiter used in the protocol. e.g. "\r\n"
 
     Returns:
-        Request object that, when sent, will bypass the zone and return the zone ID.
+        Request object that, when sent, will bypass or unbypass the zone \
+        and return the zone ID.
 
     """
     if zone_id <= 0:
         raise ValueError("Zone ID must be a positive integer.")
 
-    cmd_keyword = "BYPASS"
+    cmd_keyword = "BYPASS" if bypass else "UNBYPASS"
     cmd_str = f"{cmd_keyword} {zone_id}"
 
     return create_int_command_request(cmd_str, cmd_keyword, delimiter)
@@ -361,49 +360,28 @@ def unbypass_zone_command(zone_id: int, delimiter: str) -> Request[int]:
     return create_int_command_request(cmd_str, cmd_keyword, delimiter)
 
 
-def output_on_command(output_id: int, delimiter: str) -> Request[int]:
-    r"""Return a request that turns on an output for a specified duration.
+def set_output_state_command(output_id: int, on: bool, delimiter: str) -> Request[int]:
+    r"""Return a request that turns an output on or off.
 
     Args:
         output_id: Positive integer representing the output ID.
+        on: Boolean indicating whether to turn the output on (True) or off (False).
         delimiter: Line delimiter used in the protocol. e.g. "\r\n"
-
     Returns:
-        Request object that, when sent, will turn on the output \
-        and return the output ID.
+        Request object that, when sent, will turn the output on or off and \
+        return the output ID.
 
     """
     if output_id <= 0:
         raise ValueError("Output ID must be a positive integer.")
 
-    cmd_keyword = "OUTPUTON"
+    cmd_keyword = "OUTPUTON" if on else "OUTPUTOFF"
     cmd_str = f"{cmd_keyword} {output_id}"
 
     return create_int_command_request(cmd_str, cmd_keyword, delimiter)
 
 
-def output_off_command(output_id: int, delimiter: str) -> Request[int]:
-    r"""Return a request that turns off an output.
-
-    Args:
-        output_id: Positive integer representing the output ID.
-        delimiter: Line delimiter used in the protocol. e.g. "\r\n"
-
-    Returns:
-        Request object that, when sent, will turn off the output \
-        and return the output ID.
-
-    """
-    if output_id <= 0:
-        raise ValueError("Output ID must be a positive integer.")
-
-    cmd_keyword = "OUTPUTOFF"
-    cmd_str = f"{cmd_keyword} {output_id}"
-
-    return create_int_command_request(cmd_str, cmd_keyword, delimiter)
-
-
-def output_state_command(output_id: int, delimiter: str) -> Request[bool]:
+def get_output_state_command(output_id: int, delimiter: str) -> Request[bool]:
     r"""Return a request that retrieves the state of an output.
 
     Args:

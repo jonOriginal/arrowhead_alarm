@@ -173,6 +173,8 @@ def create_split_lines_transformer(delimiter: str) -> Transformer[str, list[str]
     """
 
     def transformer(data: str) -> FlowResult[list[str]]:
+        if not data:
+            return Go([])
         lines = data.split(delimiter)
         return Go(lines)
 
