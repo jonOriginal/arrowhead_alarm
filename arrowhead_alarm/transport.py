@@ -1,9 +1,13 @@
 ﻿"""Asyncio-based connection to Arrowhead alarm system over IP."""
+
 import asyncio
 import logging
 from typing import TypeVar
 
-from typing_extensions import override
+try:
+    from typing import override  # ty:ignore[unresolved-import]
+except ImportError:
+    from typing_extensions import override  # ty:ignore[unresolved-import]
 
 from arrowhead_alarm.const import DEF_ENCODING, DEF_READ_LENGTH
 

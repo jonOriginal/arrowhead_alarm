@@ -16,7 +16,10 @@ from typing import (
     Union,
 )
 
-from typing_extensions import override
+try:
+    from typing import override  # ty:ignore[unresolved-import]
+except ImportError:
+    from typing_extensions import override  # ty:ignore[unresolved-import]
 
 
 @dataclass
