@@ -4,7 +4,7 @@ from typing import Awaitable, Callable
 
 import pytest
 
-from elitecloud_alarm.session import EciSession, SerialCredentials
+from elitecloud_alarm.session import EciSession, Login
 from elitecloud_alarm.transport import TcpTransport
 
 
@@ -78,7 +78,7 @@ class TestSession:
         host, port = await open_mock(login_server_handler)
         conn = EciSession(
             transport=TcpTransport(host, port),
-            credentials=SerialCredentials(username="admin", password="admin"),
+            credentials=Login(username="admin", password="admin"),
         )
         try:
             await conn.connect()
@@ -91,7 +91,7 @@ class TestSession:
         host, port = await open_mock(no_login_handler)
         conn = EciSession(
             transport=TcpTransport(host, port),
-            credentials=SerialCredentials(username="admin", password="admin"),
+            credentials=Login(username="admin", password="admin"),
         )
         try:
             await conn.connect()
@@ -104,7 +104,7 @@ class TestSession:
         host, port = await open_mock(no_login_handler)
         conn = EciSession(
             transport=TcpTransport(host, port),
-            credentials=SerialCredentials(username="admin", password="admin"),
+            credentials=Login(username="admin", password="admin"),
         )
         try:
             await conn.connect()
@@ -117,7 +117,7 @@ class TestSession:
         host, port = await open_mock(login_server_handler)
         conn = EciSession(
             transport=TcpTransport(host, port),
-            credentials=SerialCredentials(username="wrong", password="wrong"),
+            credentials=Login(username="wrong", password="wrong"),
         )
         conn.connection_timeout = 2.0
         with pytest.raises(Exception):
@@ -128,7 +128,7 @@ class TestSession:
         host, port = await open_mock(panel_login_with_output_oscillation_handler)
         conn = EciSession(
             transport=TcpTransport(host, port),
-            credentials=SerialCredentials(username="admin", password="admin"),
+            credentials=Login(username="admin", password="admin"),
         )
         message_count = 0
 

@@ -2,13 +2,18 @@
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, Coroutine, Dict
+from typing import Callable, Dict
 
 from .commands import (
     arm_area_command,
     arm_no_pin_command,
     arm_user_command,
+    bypass_zone_command,
+    disarm_user_command,
     mode_command,
+    output_off_command,
+    output_on_command,
+    output_state_command,
     status_command,
     version_command,
 )
@@ -16,60 +21,38 @@ from .const import (
     DEFAULT_MAX_AREAS,
     DEFAULT_MAX_OUTPUTS,
     DEFAULT_MAX_ZONES,
-    DEFAULT_VIRTUAL_KEYPAD_NUM,
+    OUTPUT_EXPANDER_COUNT,
+    PROX_EXPANDER_COUNT,
+    ZONE_EXPANDER_COUNT,
 )
+from .consumers import panel_state_consumer
 from .session import EciSession
-from .transport import TcpTransport
 from .types import (
-    AlarmCapabilities,
-    AlarmMessage,
-    AlarmUser,
+    AlarmState,
     Area,
-    ArmingCapabilities,
     ArmingMode,
-    DisarmingCapabilities,
     EciTransport,
+    Expander,
+    Fail,
+    Login,
     Output,
-    PanelStatus,
+    PanelState,
     PanelVersion,
     ProtocolMode,
-    SerialCredentials,
+    Success,
+    UserPin,
     Zone,
 )
-from .util import is_mode_4_supported
+from .util import get_mode_capabilites, is_mode_4_supported
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _capabilities_from_mode(mode: ProtocolMode) -> AlarmCapabilities:
-    capabilities = AlarmCapabilities()
-    match mode:
-        case ProtocolMode.MODE_1:
-            capabilities.all_zones_ready_status = True
-            capabilities.arming = (
-                ArmingCapabilities.USER_ID_AND_PIN | ArmingCapabilities.ONE_PUSH
-            )
-            capabilities.disarming = DisarmingCapabilities.USER_ID_AND_PIN
-        case ProtocolMode.MODE_2:
-            capabilities.all_zones_ready_status = False
-            capabilities.arming = ArmingCapabilities.INDIVIDUAL_AREA
-            capabilities.disarming = DisarmingCapabilities.INDIVIDUAL_AREA_WITH_USER_PIN
-        case ProtocolMode.MODE_4:
-            capabilities.all_zones_ready_status = False
-            capabilities.arming = (
-                ArmingCapabilities.INDIVIDUAL_AREA | ArmingCapabilities.USER_ID_AND_PIN
-            )
-            capabilities.disarming = DisarmingCapabilities.USER_ID_AND_PIN
-        case _:
-            raise NotImplementedError
-    return capabilities
 
 
 class EciClient:
     """Client for ECi alarm systems over IP."""
 
     def __init__(
-        self, transport: EciTransport, credentials: SerialCredentials | None = None
+        self, transport: EciTransport, credentials: Login | None = None
     ) -> None:
         """Initialize the Eci alarm client.
 
@@ -78,79 +61,101 @@ class EciClient:
             credentials: Optional serial credentials for authentication
 
         """
-        self._session = EciSession(
+        self._session: EciSession = EciSession(
             transport=transport,
             credentials=credentials,
         )
-        self._change_subscribers: list[
-            Callable[[PanelStatus], None]
-            | Callable[[PanelStatus], Coroutine[Any, Any, None]]
-        ] = []
+        self._subscribers: list[Callable[[PanelState], None]] = []
+        self._subscribers_lock = asyncio.Lock()
 
-        # Initialize panel status
-        self.max_zones: int = DEFAULT_MAX_ZONES
-        self.max_outputs: int = DEFAULT_MAX_OUTPUTS
-        self.max_areas: int = DEFAULT_MAX_AREAS
-        self.virtual_keypad_number = DEFAULT_VIRTUAL_KEYPAD_NUM
-
-        # Version information
-        self.panel_version: PanelVersion | None = None
-        self.supports_rf = False
-        self.mode: ProtocolMode | None = None
-        self.capabilities: AlarmCapabilities | None = None
-
-        # Zone states
-        self.zones: Dict[int, Zone] = {i: Zone() for i in range(1, self.max_zones + 1)}
-        self.outputs: Dict[int, Output] = {
-            i: Output() for i in range(1, self.max_outputs + 1)
-        }
-        self.areas: Dict[int, Area] = {i: Area() for i in range(1, self.max_areas + 1)}
-
-        # System states
-        self.battery_ok = True
-        self.mains_ok = True
-        self.tamper_alarm = False
-        self.line_ok = True
-        self.dialer_ok = True
-        self.fuse_ok = True
-        self.dialer_active = False
-        self.code_tamper = False
-        self.receiver_ok = True if self.supports_rf else None
-        self.pendant_battery_ok = True if self.supports_rf else None
-        self.rf_battery_low = False if self.supports_rf else None
-        self.sensor_watch_alarm = False if self.supports_rf else None
+        self._state: PanelState = self._default_panel_state()
 
         self.last_update = None
-        self.delimiter = "\n"
+        self.delimiter = "\r\n"
+        self.panel_version: PanelVersion | None = None
 
-    def status(self) -> PanelStatus:
+        self.status_worker_task: asyncio.Task[None] | None = None
+
+    def state(self) -> PanelState:
         """Return current panel status."""
-        return PanelStatus(
-            battery_ok=self.battery_ok,
-            mains_ok=self.mains_ok,
-            tamper_alarm=self.tamper_alarm,
-            line_ok=self.line_ok,
-            dialer_ok=self.dialer_ok,
-            fuse_ok=self.fuse_ok,
-            dialer_active=self.dialer_active,
-            code_tamper=self.code_tamper,
-            receiver_ok=self.receiver_ok,
-            pendant_battery_ok=self.pendant_battery_ok,
-            rf_battery_low=self.rf_battery_low,
-            sensor_watch_alarm=self.sensor_watch_alarm,
-            zones=self.zones,
-            outputs=self.outputs,
-            areas=self.areas,
+        return self._state
+
+    def generate_default_zones(self) -> Dict[int, Zone]:
+        """Generate default zones based on default constants."""
+        return {
+            i: Zone(
+                zone_number=i,
+                supervise_alarm=False,
+                bypassed=False,
+                trouble_alarm=False,
+                alarm=False,
+                radio_battery_low=False,
+                zone_closed=True,
+                sensor_watch_alarm=False,
+            )
+            for i in range(1, DEFAULT_MAX_ZONES + 1)
+        }
+
+    def generate_default_areas(self) -> Dict[int, Area]:
+        """Generate default areas based on default constants."""
+        return {
+            i: Area(area_number=i, state=AlarmState.DISARMED, ready_to_arm=True)
+            for i in range(1, DEFAULT_MAX_AREAS + 1)
+        }
+
+    def generate_expanders(self, count: int) -> Dict[int, Expander]:
+        """Generate default expanders based on default constants."""
+        return {
+            i: Expander(
+                expander_id=i,
+                tamper_alarm_triggered=False,
+                mains_fault=False,
+                battery_fault=False,
+                fuse_fault=False,
+            )
+            for i in range(1, count + 1)
+        }
+
+    def generate_default_outputs(self) -> Dict[int, Output]:
+        """Generate default outputs based on default constants."""
+        return {
+            i: Output(output_number=i, on=False)
+            for i in range(1, DEFAULT_MAX_OUTPUTS + 1)
+        }
+
+    def _default_panel_state(self) -> PanelState:
+        return PanelState(
+            ready_to_arm=False,
+            battery_fault=False,
+            mains_fault=False,
+            tamper_alarm_triggered=False,
+            line_ok=False,
+            dialer_fault=False,
+            dialer_line_fault=False,
+            fuse_fault=False,
+            monitoring_station_active=False,
+            dialer_active=False,
+            code_tamper=False,
+            receiver_ok=None,
+            pendant_battery_ok=None,
+            rf_battery_low=None,
+            sensor_watch_alarm=None,
+            zones=self.generate_default_zones(),
+            outputs=self.generate_default_outputs(),
+            areas=self.generate_default_areas(),
+            zone_expanders=self.generate_expanders(ZONE_EXPANDER_COUNT),
+            output_expanders=self.generate_expanders(OUTPUT_EXPANDER_COUNT),
+            prox_expanders=self.generate_expanders(PROX_EXPANDER_COUNT),
         )
 
     async def connect(self) -> None:
         """Connect to the panel."""
         await self._session.connect()
-        version = await self._query_panel_version()
+        await self._set_mode(ProtocolMode.MODE_1)
+        version = await self.query_panel_version()
         if version:
             self.panel_version = version
             _LOGGER.info("Connected to panel version: %s", version)
-        await self._auto_set_mode()
 
     async def disconnect(self) -> None:
         """Disconnect from the panel."""
@@ -161,199 +166,39 @@ class EciClient:
         """Return True if connected and authenticated."""
         return self._session.connected()
 
-    def on_change(
-        self,
-        callback: Callable[[PanelStatus], None]
-        | Callable[[PanelStatus], Coroutine[Any, Any, None]],
-    ) -> None:
-        """Subscribe to panel status changes."""
-        self._change_subscribers.append(callback)
+    async def _status_worker(self) -> None:
+        listener, queue = panel_state_consumer(self.delimiter)
+        async with await self._session.read_context(listener):
+            while True:
+                status = await queue.get()
+                match status:
+                    case Success(value=operation):
+                        operation(self._state)
+                    case Fail(error):
+                        _LOGGER.error("Error parsing status message: %s", error)
+                self.last_update = asyncio.get_event_loop().time()
+                await self._emit_change(self._state)
 
-    def _emit_change(self, status: PanelStatus) -> None:
-        for subscriber in self._change_subscribers:
-            result = subscriber(status)
-            if isinstance(result, Awaitable):
-                asyncio.create_task(result)
+    async def on_change(self, callback: Callable[[PanelState], None]) -> None:
+        """Subscribe to panel state changes."""
+        async with self._subscribers_lock:
+            self._subscribers.append(callback)
 
-    def _process_message(self, message: str) -> None:
-        """Process incoming messages with protocol-aware parsing."""
-        _LOGGER.debug("Processing message: %s", message)
-        alarm_msg = AlarmMessage.parse(message)
-        handlers: list[Callable[[AlarmMessage], bool]] = [
-            self._process_system_message,
-            self._process_rf_message,
-            self._process_area_message,
-            self._process_zone_message,
-            self._process_output_message,
-        ]
-        try:
-            for handler in handlers:
-                if not handler(alarm_msg):
-                    continue
-                _LOGGER.debug("Message processed by %s", handler.__name__)
-                self._emit_change(self.status())
-                return
-            _LOGGER.warning("Unhandled message type: %s", message)
-        except Exception as err:
-            _LOGGER.error("Error processing message '%s': %s", message, err)
+    async def _emit_change(self, state: PanelState) -> None:
+        async with self._subscribers_lock:
+            subs = list(self._subscribers)
 
-    def _process_system_message(self, message: AlarmMessage) -> bool:
-        """Process system status messages."""
-        match message.message_type:
-            case "RO":
-                self.ready_to_arm = True
-            case "NR":
-                self.ready_to_arm = False
-            case "MF":
-                self.mains_ok = False
-            case "MR":
-                self.mains_ok = True
-            case "BF":
-                self.battery_ok = False
-            case "BR":
-                self.battery_ok = True
-            case "TA":
-                self.tamper_alarm = True
-            case "TR":
-                self.tamper_alarm = False
-            case "LF":
-                self.line_ok = False
-            case "LR":
-                self.line_ok = True
-            case "DF":
-                self.dialer_ok = False
-            case "DR":
-                self.dialer_ok = True
-            case "FF":
-                self.fuse_ok = False
-            case "FR":
-                self.fuse_ok = True
-            case "CAL":
-                self.dialer_active = True
-            case "CLF":
-                self.dialer_active = False
-            case _:
-                return False
-        return True
+        for subscriber in subs:
+            try:
+                subscriber(state)
+            except Exception as err:
+                _LOGGER.error("Error in change subscriber: %s", err)
 
-    def _process_rf_message(self, message: AlarmMessage) -> bool:
-        """Process RF-related messages."""
-        if not self.supports_rf:
-            return False
-
-        match message.message_type:
-            case "RIF":
-                self.receiver_ok = False
-            case "RIR":
-                self.receiver_ok = True
-            case "ZBL":
-                self.rf_battery_low = True
-            case "ZBR":
-                self.rf_battery_low = False
-            case "ZIA":
-                self.sensor_watch_alarm = True
-            case "ZIR":
-                self.sensor_watch_alarm = False
-            case _:
-                return False
-        return True
-
-    def _process_area_message(self, message: AlarmMessage) -> bool:
-        """Process area-related messages."""
-        area_num = message.number
-        if not area_num:
-            return False
-
-        match message.message_type:
-            case "A":
-                self.armed = True
-                self.arming = False
-                if area_num == 1:
-                    self.area_a_armed = True
-                elif area_num == 2:
-                    self.area_b_armed = True
-            case "EA":
-                self.arming = True
-            case "ES":
-                self.arming = True
-            case "S":
-                self.armed = True
-                self.arming = False
-                self.stay_mode = True
-                if area_num == 1:
-                    self.area_a_armed = True
-                elif area_num == 2:
-                    self.area_b_armed = True
-            case "D":
-                if area_num == 1:
-                    self.area_a_armed = False
-                elif area_num == 2:
-                    self.area_b_armed = False
-                if not self.area_a_armed and not self.area_b_armed:
-                    self.armed = False
-            case _:
-                return False
-        return True
-
-    def _process_zone_message(self, message: AlarmMessage) -> bool:
-        """Process zone-related messages."""
-        zone_num = message.number
-        if zone_num is None:
-            return False
-
-        if zone_num not in self.zones:
-            return False
-
-        match message.message_type:
-            case "ZO":
-                self.zones[zone_num].zone_closed = False
-            case "ZC":
-                self.zones[zone_num].zone_closed = True
-            case "ZA":
-                self.zones[zone_num].alarm = True
-                self.alarm = True
-            case "ZR":
-                self.zones[zone_num].alarm = False
-                self.alarm = any(self.zones[z].alarm for z in self.zones)
-            case "ZT":
-                self.zones[zone_num].trouble_alarm = True
-            case "ZTR":
-                self.zones[zone_num].trouble_alarm = False
-            case "ZBY":
-                self.zones[zone_num].bypassed = True
-            case "ZBYR":
-                self.zones[zone_num].bypassed = False
-            case "ZSA" if self.supports_rf:
-                self.zone_supervise_fail = True
-            case "ZSR" if self.supports_rf:
-                self.zone_supervise_fail = False
-            case _:
-                return False
-        return True
-
-    def _process_output_message(self, message: AlarmMessage) -> bool:
-        """Process output-related messages."""
-        output_num = message.number
-        if output_num is None:
-            return False
-
-        if output_num not in self.outputs:
-            return False
-
-        match message.message_type:
-            case "OO":
-                self.outputs[output_num].state = True
-            case "OR":
-                self.outputs[output_num].state = False
-            case _:
-                return False
-        return True
-
-    async def _query_panel_version(self) -> PanelVersion:
+    async def query_panel_version(self) -> PanelVersion:
         """Query the panel for its firmware version."""
         try:
             _LOGGER.info("Querying panel version")
-            req = version_command("\r\n")
+            req = version_command(self.delimiter)
             return await self._session.request(req)
         except Exception as err:
             _LOGGER.error("Error querying panel version: %s", err)
@@ -363,7 +208,7 @@ class EciClient:
         """Arm the alarm in away mode."""
         _LOGGER.info("Attempting to arm in %s mode without PIN", mode.name)
         try:
-            req = arm_no_pin_command(mode, "\r\n")
+            req = arm_no_pin_command(mode, self.delimiter)
             await self._session.request(req)
         except RuntimeError as err:
             _LOGGER.warning("Panel returned error for %s: %s", mode.name, err)
@@ -372,7 +217,7 @@ class EciClient:
             _LOGGER.error("Error sending %s command: %s", mode.name, err)
             raise
 
-    async def arm_user(self, user: AlarmUser, mode: ArmingMode) -> None:
+    async def arm_user(self, user: UserPin, mode: ArmingMode) -> None:
         """Arm the alarm in away mode using specific user credentials."""
         _LOGGER.info(
             "Attempting to arm in away mode using user code: %s, pin: %s",
@@ -381,12 +226,12 @@ class EciClient:
         )
         if self.mode != ProtocolMode.MODE_1:
             _LOGGER.error(
-                "Cannot arm away with user credentials: protocol mode %d does not support user commands",
+                "Protocol mode %d does not support user commands",
                 self.mode,
             )
             return
         try:
-            req = arm_user_command(user.user_id, user.pin, mode, "\r\n")
+            req = arm_user_command(user.user_id, user.pin, mode, self.delimiter)
             await self._session.request(req)
         except RuntimeError as err:
             _LOGGER.warning("Panel returned error for ARMAWAY: %s", err)
@@ -394,63 +239,82 @@ class EciClient:
             _LOGGER.error("Error sending ARMAWAY command: %s", err)
 
     async def arm_area(self, area_number: int, mode: ArmingMode) -> None:
-        """Arm the alarm in away mode for a specific area."""
+        """Arm a specific area in away mode.
+
+        Args:
+            area_number: Area number to arm.
+            mode: Arming mode to use.
+
+        """
         _LOGGER.info("Attempting to arm in away mode for area %d", area_number)
         if self.mode != ProtocolMode.MODE_4:
             _LOGGER.error(
-                "Cannot arm away for area %d: protocol mode %d does not support area commands",
+                "protocol mode %d does not support area commands",
                 area_number,
                 self.mode,
             )
             return
         try:
-            req = arm_area_command(area_number, mode, "\r\n")
+            req = arm_area_command(area_number, mode, self.delimiter)
             await self._session.request(req)
         except Exception as err:
             _LOGGER.error(
                 "Error sending ARMAWAY command for area %d: %s", area_number, err
             )
 
-    async def disarm(self, user: AlarmUser):
-        """Disarm the alarm using specific user credentials."""
+    async def disarm(self, user: UserPin) -> None:
+        """Disarm the alarm using specific user credentials.
+
+        Args:
+            user:  UserPin object with user ID and PIN.
+
+        """
         _LOGGER.info(
             "Attempting to disarm using user code: %s, pin: %s", user.user_id, user.pin
         )
         try:
             _LOGGER.debug("Trying DISARM command with user credentials")
-            response = await self._send_command(f"DISARM {user.user_id} {user.pin}")
+            req = disarm_user_command(user.user_id, user.pin, self.delimiter)
+            response = await self._session.request(req)
             _LOGGER.debug("DISARM command response: %r", response)
         except RuntimeError as err:
             _LOGGER.warning("Panel returned error for DISARM: %s", err)
-            return False
+            raise
         except Exception as err:
             _LOGGER.error("Error sending DISARM command: %s", err)
-            return False
+            raise
 
-    async def bypass_zone(self, zone_number: int):
-        """Bypass a zone."""
+    async def bypass_zone(self, zone_number: int) -> None:
+        """Bypass a zone.
+
+        Args:
+            zone_number: Zone number to bypass.
+
+        """
+        if zone_number not in self._state.zones:
+            _LOGGER.warning("Zone number %d is not valid for this panel", zone_number)
+            raise ValueError("Invalid zone number %d", zone_number)
         try:
-            _LOGGER.info("Sending bypass command for zone %d", zone_number)
-            if zone_number not in self.zones:
-                _LOGGER.warning(
-                    "Zone number %d is not valid for this panel", zone_number
-                )
-                return False
             _LOGGER.debug("Sending BYPASS command for zone %d", zone_number)
-            resp = await self._send_command(f"BYPASS {zone_number}")
+            req = bypass_zone_command(zone_number, self.delimiter)
+            resp = await self._session.request(req)
             _LOGGER.debug("BYPASS command response: %r", resp)
+            self._state.zones[zone_number].bypassed = True
         except Exception as err:
             _LOGGER.error("Error bypassing zone %d: %s", zone_number, err)
-            return False
+            raise
 
     async def unbypass_zone(self, zone_number: int) -> None:
         """Remove bypass from a zone."""
         _LOGGER.info("Sending unbypass command for zone %d", zone_number)
-        if zone_number not in self.zones:
+        if zone_number not in self._state.zones:
             _LOGGER.warning("Zone number %d is not valid for this panel", zone_number)
             return
         try:
-            await self._send_command(f"UNBYPASS {zone_number}")
+            req = bypass_zone_command(zone_number, self.delimiter)
+            resp = await self._session.request(req)
+            _LOGGER.debug("UNBYPASS command response: %r", resp)
+            self._state.zones[zone_number].bypassed = False
         except Exception as err:
             _LOGGER.error("Error unbypassing zone %d: %s", zone_number, err)
             raise
@@ -458,14 +322,17 @@ class EciClient:
     async def turn_output_on(self, output_number: int) -> None:
         """Turn output on permanently."""
         _LOGGER.info("Turning on output %d", output_number)
-        if output_number > self.max_outputs:
+        if output_number > len(self._state.outputs):
             _LOGGER.warning(
                 "Output number %d exceeds max outputs %d",
                 output_number,
-                self.max_outputs,
+                len(self._state.outputs),
             )
         try:
-            await self._send_command(f"OUTPUTON {output_number}")
+            req = output_on_command(output_number, self.delimiter)
+            resp = await self._session.request(req)
+            _LOGGER.debug("OUTPUTON command response: %r", resp)
+            self._state.outputs[output_number].on = True
         except Exception as err:
             _LOGGER.error("Error turning on output %d: %s", output_number, err)
             raise
@@ -473,19 +340,17 @@ class EciClient:
     async def turn_output_off(self, output_number: int) -> None:
         """Turn output off."""
         _LOGGER.info("Turning off output %d", output_number)
-        if output_number > self.max_outputs:
+        if output_number > len(self._state.outputs):
             _LOGGER.warning(
                 "Output number %d exceeds max outputs %d",
                 output_number,
-                self.max_outputs,
-            )
-            raise ValueError(
-                "Output number %d exceeds max outputs %d",
-                output_number,
-                self.max_outputs,
+                len(self._state.outputs),
             )
         try:
-            await self._send_command(f"OUTPUTOFF {output_number}")
+            req = output_off_command(output_number, self.delimiter)
+            resp = await self._session.request(req)
+            _LOGGER.debug("OUTPUTOFF command response: %r", resp)
+            self._state.outputs[output_number].on = False
         except Exception as err:
             _LOGGER.error("Error turning off output %d: %s", output_number, err)
             raise
@@ -493,125 +358,21 @@ class EciClient:
     async def get_output_state(self, output_number: int) -> bool:
         """Get the current state of an output."""
         _LOGGER.info("Getting state for output %d", output_number)
-        if output_number > self.max_outputs:
-            raise ValueError(
+        if output_number > len(self._state.outputs):
+            _LOGGER.warning(
                 "Output number %d exceeds max outputs %d",
                 output_number,
-                self.max_outputs,
+                len(self._state.outputs),
             )
         try:
-            resp = await self._send_command(f"OUTPUT {output_number}")
-            if resp is None:
-                raise
-            elif resp.startswith("OK"):
-                parts = resp.split()
-                if len(parts) == 4 and parts[3].upper() in ("ON", "OFF"):
-                    state = parts[2] == "ON"
-                    _LOGGER.info(
-                        "Output %d state is %s", output_number, "ON" if state else "OFF"
-                    )
-                    return state
-                else:
-                    raise ValueError(
-                        "Unexpected format in output state response: %r", resp
-                    )
-            else:
-                raise ValueError(
-                    "Unexpected response for output state %d: %r", output_number, resp
-                )
+            req = output_state_command(output_number, self.delimiter)
+            resp = await self._session.request(req)
+            _LOGGER.debug("OUTPUTSTATE command response: %r", resp)
+            self._state.outputs[output_number].on = resp
+            return resp
         except Exception as err:
             _LOGGER.error("Error getting state for output %d: %s", output_number, err)
             raise
-
-    async def set_virtual_keypad_number(self, keypad_number: int) -> None:
-        """Set the virtual keypad number."""
-        _LOGGER.info("Setting virtual keypad number to %d", keypad_number)
-        try:
-            resp = await self._send_command(f"DEVICE {keypad_number}")
-            if resp and "OK" in resp:
-                _LOGGER.info(
-                    "Virtual keypad number set to %d successfully", keypad_number
-                )
-                self.virtual_keypad_number = keypad_number
-            else:
-                _LOGGER.warning(
-                    "Failed to set virtual keypad number to %d. Response: %r",
-                    keypad_number,
-                    resp,
-                )
-                raise ValueError(
-                    f"Failed to set virtual keypad number to {keypad_number}"
-                )
-        except Exception as err:
-            _LOGGER.error(
-                "Error setting virtual keypad number to %d: %s", keypad_number, err
-            )
-
-    # async def get_virtual_keypad_number(self) -> int:
-    #     """Get the current virtual keypad number."""
-    #     _LOGGER.info("Getting virtual keypad number")
-    #     try:
-    #         resp = await self._send_command("DEVICE ?")
-    #         if resp is None:
-    #             _LOGGER.warning("No response received for DEVICE command")
-    #             return self.virtual_keypad_number
-    #         if resp.startswith("OK"):
-    #             parts = resp.split()
-    #             if len(parts) == 3 and parts[2].isdigit():
-    #                 keypad_number = int(parts[2])
-    #                 _LOGGER.info("Current virtual keypad number is %d", keypad_number)
-    #                 self.virtual_keypad_number = keypad_number
-    #                 return keypad_number
-    #             else:
-    #                 _LOGGER.warning("Unexpected format in DEVICE response: %r", resp)
-    #                 return self.virtual_keypad_number
-    #         _LOGGER.warning("Unexpected response for DEVICE command: %r", resp)
-    #         return self.virtual_keypad_number
-    #     except Exception as err:
-    #         _LOGGER.error("Error getting virtual keypad number: %s", err)
-    #         return self.virtual_keypad_number
-
-    # async def send_keypad_input(self, input_str: str) -> None:
-    #     """Send keypad input to the panel."""
-    #     _LOGGER.info("Sending keypad input: %s", input_str)
-    #     try:
-    #         await self._send_command(f"KEYPAD {input_str}")
-    #     except Exception as err:
-    #         _LOGGER.error("Error sending keypad input '%s': %s", input_str, err)
-
-    # async def send_program_input(self, address: int, option: int, value: str) -> None:
-    #     """Send programming input to the panel."""
-    #     _LOGGER.info("Sending program input: address=%d, option=%d, value=%s", address, option, value)
-    #     try:
-    #         resp = await self._send_command(f"P{address}E{option}={value}")
-    #         if resp:
-    #             _LOGGER.info("Program input accepted for address=%d option=%d", address, option)
-    #         else:
-    #             _LOGGER.warning("Program input not accepted for address=%d option=%d. Response: %r", address,
-    #             option, resp)
-    #     except Exception as err:
-    #         _LOGGER.error("Error sending program input address=%d option=%d value=%s: %s", address, option, value, err)
-
-    # async def query_program_value(self, address: int, option: int) -> str | None:
-    #     """Query a programming value from the panel."""
-    #     _LOGGER.info("Querying program value: address=%d, option=%d", address, option)
-    #     try:
-    #
-    #     except Exception as err:
-    #         _LOGGER.error(
-    #             "Error querying program value address=%d option=%d: %s",
-    #             address,
-    #             option,
-    #             err,
-    #         )
-    #         return None
-
-    def set_output_count(self, max_outputs: int) -> None:
-        """Set outputs based on detected count from panel."""
-        _LOGGER.info("Setting outputs, max_outputs: %d", max_outputs)
-        self.max_outputs = max_outputs
-        self.outputs = {i: Output() for i in range(1, max_outputs + 1)}
-        _LOGGER.debug("Outputs configured: %s", self.outputs)
 
     async def _auto_set_mode(self) -> None:
         """Automatically set the best protocol mode based on panel capabilities."""
@@ -625,28 +386,49 @@ class EciClient:
             _LOGGER.info("Panel does not support Mode 4, setting protocol mode to 2")
             return await self._set_mode(ProtocolMode.MODE_2)
 
+    async def _restart_status_worker(self) -> None:
+        """Restart the status worker task."""
+        if self.status_worker_task:
+            self.status_worker_task.cancel()
+            try:
+                await self.status_worker_task
+            except asyncio.CancelledError:
+                pass
+        self.status_worker_task = asyncio.create_task(self._status_worker())
+
     async def _set_mode(self, mode: ProtocolMode) -> None:
         """Set the protocol mode of the panel."""
         _LOGGER.info("Setting protocol mode to %d", mode.value)
         try:
-            command = mode_command(mode, self.delimiter)
-            await self._session.request(command)
+            command = mode_command(mode)
+            delimiter = await self._session.request(command, timeout=5.0)
             self.mode = mode
-            self.capabilities = _capabilities_from_mode(mode)
+            self.delimiter = delimiter
+            self.capabilities = get_mode_capabilites(mode)
+            await self._restart_status_worker()
+
         except Exception as err:
             _LOGGER.error("Error setting protocol mode to %d: %s", mode, err)
             raise
 
-    async def request_status(self) -> PanelStatus:
-        """Returns:"""
-        _LOGGER.info("Getting current panel status")
+    async def request_state(self) -> PanelState:
+        """Request the current panel state.
+
+        Returns:
+            PanelState: Current state of the panel.
+
+        """
+        _LOGGER.info("Getting current panel state")
         if not self.is_connected:
-            _LOGGER.error("Cannot get status: not connected to panel")
+            _LOGGER.error("Cannot get state: not connected to panel")
             raise ConnectionError("Not connected to panel")
         try:
             cmd = status_command(self.delimiter)
-            await self._session.request(cmd)
+            ops = await self._session.request(cmd)
+            for op in ops:
+                op(self._state)
+            await self._emit_change(self._state)
         except Exception as err:
-            _LOGGER.error("Error requesting status from panel: %s", err)
+            _LOGGER.error("Error requesting state from panel: %s", err)
             raise
-        return self.status()
+        return self.state()

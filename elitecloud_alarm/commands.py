@@ -1,15 +1,27 @@
 ﻿"""Commands for interacting with the Eci alarm panel."""
 
-from .parsing import (
+from typing import Callable, TypeVar
+
+from elitecloud_alarm import PanelState
+
+from .consumers import (
+    create_future_consumer,
+    create_line_join_transformer,
+    create_sliding_timeout_consumer,
+)
+from .transformers import (
     check_string_with_options,
-    check_version_string,
-    create_future_parser,
-    create_sliding_timeout_parser,
-    go_discard,
-    join_lines,
-    parse_int,
-    single_line_command_step,
-    strip,
+    create_command_data_transformer,
+    create_command_int_data_transformer,
+    create_command_no_data_transformer,
+    create_split_lines_transformer,
+    create_strip_transformer,
+    on_off_boolean_transformer,
+    panel_state_message_transformer,
+    panel_version_transformer,
+    result_discard_transformer,
+    wait_any_complete_lines,
+    wait_line,
     wait_lines,
 )
 from .types import (
@@ -19,8 +31,53 @@ from .types import (
     Go,
     PanelVersion,
     ProtocolMode,
+    Reject,
     Request,
+    Transformer,
 )
+from .util import get_arming_keyword, get_delimiter_for_mode
+
+T = TypeVar("T")
+
+
+def create_future_request(command: str, transformer: Transformer[str, T]) -> Request[T]:
+    """Create a Request object with a future consumer.
+
+    Args:
+        command: The command string to send.
+        transformer: The transformer function to process the response.
+
+    Returns:
+        A Request object that will process the response using the provided transformer.
+
+    """
+    listener, fut = create_future_consumer(transformer)
+    return Request(data=command, response_callback=listener, awaitable=fut)
+
+
+def create_int_command_request(
+    cmd_str: str,
+    cmd_keyword: str,
+    delimiter: str,
+) -> Request[int]:
+    r"""Return a request that processes an integer command response.
+
+    Args:
+        cmd_str: Command string to send.
+        cmd_keyword: Command keyword to validate in the response.
+        delimiter: Line delimiter used in the protocol. e.g. "\r\n"
+
+    Returns:
+        Request object that, when sent, will return an integer response.
+
+    """
+
+    def transformer(response: str) -> FlowResult[int]:
+        return wait_line(response, delimiter).bind(
+            create_command_int_data_transformer(cmd_str, cmd_keyword)
+        )
+
+    return create_future_request(cmd_str, transformer)
 
 
 def version_command(delimiter: str) -> Request[PanelVersion]:
@@ -34,17 +91,18 @@ def version_command(delimiter: str) -> Request[PanelVersion]:
     """
     cmd_str = "Version"
 
-    def processor(response: str) -> FlowResult[PanelVersion]:
-        return single_line_command_step(response, cmd_str, "Version", delimiter).bind(
-            check_version_string
+    def transformer(response: str) -> FlowResult[PanelVersion]:
+        return (
+            wait_line(response, delimiter)
+            .bind(create_command_data_transformer(cmd_str, cmd_str))  # noqa: F821
+            .bind(create_strip_transformer('"'))
+            .bind(panel_version_transformer)
         )
 
-    listener, fut = create_future_parser(processor)
-
-    return Request(data=cmd_str, callback=listener, awaitable=fut)
+    return create_future_request(cmd_str, transformer)
 
 
-def string_options_request(
+def string_options_command(
     message: str, options: list[str], case_sensitive: bool = True
 ) -> Request[str]:
     """Return a request that checks the response against a list of string options.
@@ -59,15 +117,15 @@ def string_options_request(
 
     """
 
-    def processor(response: str) -> FlowResult[str]:
+    def transformer(response: str) -> FlowResult[str]:
         return check_string_with_options(response, options, case_sensitive)
 
-    listener, fut = create_future_parser(processor)
+    listener, fut = create_future_consumer(transformer)
 
-    return Request(data=message, callback=listener, awaitable=fut)
+    return Request(data=message, response_callback=listener, awaitable=fut)
 
 
-def mode_command(mode: ProtocolMode, delimiter: str) -> Request[None]:
+def mode_command(mode: ProtocolMode) -> Request[str]:
     r"""Return a request that sets the protocol mode.
 
     Args:
@@ -75,63 +133,34 @@ def mode_command(mode: ProtocolMode, delimiter: str) -> Request[None]:
         delimiter: Line delimiter used in the protocol. e.g. "\r\n"
 
     Returns:
-        Request object that, when sent, will set the protocol mode.
+        Request object that, when sent, will set the protocol mode and return \
+        the mode delimiter.
 
     """
-    cmd_str = f"MODE {mode.value}"
+    keyword = "MODE"
+    cmd_str = f"{keyword} {mode.value}"
+    delimiter = get_delimiter_for_mode(mode)
 
-    def mode_processor(response: str) -> FlowResult[int]:
-        try:
-            return Go(int(response.strip()))
-        except ValueError:
-            return Error(ValueError("Invalid mode response"))
+    def mode_checker(number: int) -> FlowResult[str]:
+        if number == mode.value:
+            return Go(delimiter)
+        else:
+            return Error(
+                ValueError(
+                    f"Protocol mode in response ({number}) \
+                    does not match requested mode ({mode.value})"
+                )
+            )
 
-    def command_success_processor(response: str) -> FlowResult[str]:
-        return single_line_command_step(response, cmd_str, "Mode", delimiter)
-
-    def join_line_processor(response: list[str]) -> FlowResult[str]:
-        return join_lines(response, "\n")
-
-    def processor(response: str) -> FlowResult[None]:
+    def transformer(response: str) -> FlowResult[str]:
         return (
             wait_lines(response, 2, delimiter)
-            .bind(join_line_processor)
-            .bind(command_success_processor)
-            .bind(mode_processor)
-            .bind(go_discard)
+            .bind(create_line_join_transformer(" "))
+            .bind(create_command_int_data_transformer(cmd_str, keyword))
+            .bind(mode_checker)
         )
 
-    listener, fut = create_future_parser(processor)
-
-    return Request(data=cmd_str, callback=listener, awaitable=fut)
-
-
-def get_arming_keyword(mode: ArmingMode) -> str:
-    """Return the arming command keyword for the given arming mode.
-
-    Args:
-        mode (ArmingMode): The arming mode.
-
-    Returns:
-        str: The corresponding arming command keyword.
-
-    Raises:
-        ValueError: If the arming mode is unsupported.
-
-    """
-    match mode:
-        case ArmingMode.AWAY:
-            return "ARMAWAY"
-        case ArmingMode.STAY:
-            return "ARMSTAY"
-        case _:
-            raise ValueError(f"Unsupported arming mode: {mode}")
-
-
-def _arm_command_processor(
-    response: str, command: str, command_keyword: str, delimiter: str
-) -> FlowResult[str]:
-    return single_line_command_step(response, command, command_keyword, delimiter)
+    return create_future_request(cmd_str, transformer)
 
 
 def arm_user_command(
@@ -157,16 +186,58 @@ def arm_user_command(
     command_keyword = get_arming_keyword(mode)
     command = f"{command_keyword} {user_id} {pin}"
 
-    def processor(response: str) -> FlowResult[int]:
-        return (
-            _arm_command_processor(response, command, command_keyword, delimiter)
-            .bind(strip)
-            .bind(parse_int)
+    def transformer(response: str) -> FlowResult[int]:
+        return wait_line(response, delimiter).bind(
+            create_command_int_data_transformer(command, command_keyword)
         )
 
-    listener, fut = create_future_parser(processor)
+    return create_future_request(command, transformer)
 
-    return Request(data=command, callback=listener, awaitable=fut)
+
+def disarm_user_command(user_id: int, pin: int, delimiter: str) -> Request[int]:
+    r"""Return a request that disarms the panel for the user.
+
+    Args:
+        user_id: Positive integer representing the user ID.
+        pin: User's PIN as a non-negative integer.
+        delimiter: Line delimiter used in the protocol. e.g. "\r\n"
+
+    Returns:
+        Request object that, when sent, will disarm the panel and return the user ID.
+
+    """
+    if user_id <= 0:
+        raise ValueError("User ID must be a positive integer.")
+    if pin < 0:
+        raise ValueError("PIN must be a non-negative integer.")
+
+    keyword = "DISARM"
+    command = f"{keyword} {user_id} {pin}"
+
+    return create_int_command_request(command, keyword, delimiter)
+
+
+def disarm_area_command(area_id: int, pin: int, delimiter: str) -> Request[int]:
+    r"""Return a request that disarms an area for the given PIN.
+
+    Args:
+        area_id: Positive integer representing the area ID.
+        pin: User's PIN as a non-negative integer.
+        delimiter: Line delimiter used in the protocol. e.g. "\r\n"
+
+    Returns:
+        Request object that, when sent, will disarm the area and return the area ID.
+
+    """
+    if area_id <= 0:
+        raise ValueError("Area ID must be a positive integer.")
+    if pin < 0:
+        raise ValueError("PIN must be a non-negative integer.")
+
+    keyword = "DISARM"
+    command = f"{keyword} {area_id} {pin}"
+
+    return create_int_command_request(command, keyword, delimiter)
 
 
 def arm_no_pin_command(mode: ArmingMode, delimiter: str) -> Request[None]:
@@ -182,14 +253,12 @@ def arm_no_pin_command(mode: ArmingMode, delimiter: str) -> Request[None]:
     """
     cmd_str = get_arming_keyword(mode)
 
-    def processor(response: str) -> FlowResult[None]:
-        return _arm_command_processor(response, cmd_str, cmd_str, delimiter).bind(
-            go_discard
+    def transformer(response: str) -> FlowResult[None]:
+        return wait_line(response, delimiter).bind(
+            create_command_no_data_transformer(cmd_str, cmd_str)
         )
 
-    listener, fut = create_future_parser(processor)
-
-    return Request(data=cmd_str, callback=listener, awaitable=fut)
+    return create_future_request(cmd_str, transformer)
 
 
 def arm_area_command(area_id: int, mode: ArmingMode, delimiter: str) -> Request[int]:
@@ -210,19 +279,10 @@ def arm_area_command(area_id: int, mode: ArmingMode, delimiter: str) -> Request[
     command_keyword = get_arming_keyword(mode)
     cmd_str = f"{command_keyword} {area_id}"
 
-    def processor(response: str) -> FlowResult[int]:
-        return (
-            _arm_command_processor(response, cmd_str, command_keyword, delimiter)
-            .bind(strip)
-            .bind(parse_int)
-        )
-
-    listener, fut = create_future_parser(processor)
-
-    return Request(data=cmd_str, callback=listener, awaitable=fut)
+    return create_int_command_request(cmd_str, command_keyword, delimiter)
 
 
-def status_command(delimiter: str) -> Request[None]:
+def status_command(delimiter: str) -> Request[list[Callable[[PanelState], None]]]:
     r"""Return a request that retrieves the panel status.
 
     Args:
@@ -233,11 +293,156 @@ def status_command(delimiter: str) -> Request[None]:
     """
     cmd_str = "Status"
 
-    def processor(response: str) -> FlowResult[None]:
-        return single_line_command_step(response, cmd_str, "Status", delimiter).bind(
-            go_discard
+    def operation_transformer(
+        list_lines: list[str],
+    ) -> FlowResult[list[Callable[[PanelState], None]]]:
+        ops = []
+        for line in list_lines:
+            result = panel_state_message_transformer(line)
+            match result:
+                case Go(value=op):
+                    ops.append(op)
+                case Error(error=e):
+                    return Error(e)
+                case _:
+                    continue
+        return Go(ops)
+
+    def transformer(response: str) -> FlowResult[list[Callable[[PanelState], None]]]:
+        return (
+            wait_any_complete_lines(response, delimiter)
+            .bind(create_line_join_transformer(" "))
+            .bind(create_command_data_transformer(cmd_str, cmd_str))
+            .bind(create_split_lines_transformer(" "))
+            .bind(operation_transformer)
         )
 
-    listener, fut = create_sliding_timeout_parser(processor, timeout=0.1)
+    listener, fut = create_sliding_timeout_consumer(transformer, timeout=0.1)
+    return Request(data=cmd_str, response_callback=listener, awaitable=fut)
 
-    return Request(data=cmd_str, callback=listener, awaitable=fut)
+
+def bypass_zone_command(zone_id: int, delimiter: str) -> Request[int]:
+    r"""Return a request that bypasses a zone.
+
+    Args:
+        zone_id: Positive integer representing the zone ID.
+        delimiter: Line delimiter used in the protocol. e.g. "\r\n"
+
+    Returns:
+        Request object that, when sent, will bypass the zone and return the zone ID.
+
+    """
+    if zone_id <= 0:
+        raise ValueError("Zone ID must be a positive integer.")
+
+    cmd_keyword = "BYPASS"
+    cmd_str = f"{cmd_keyword} {zone_id}"
+
+    return create_int_command_request(cmd_str, cmd_keyword, delimiter)
+
+
+def unbypass_zone_command(zone_id: int, delimiter: str) -> Request[int]:
+    r"""Return a request that unbypasses a zone.
+
+    Args:
+        zone_id: Positive integer representing the zone ID.
+        delimiter: Line delimiter used in the protocol. e.g. "\r\n"
+
+    Returns:
+        Request object that, when sent, will unbypass the zone and return the zone ID.
+
+    """
+    if zone_id <= 0:
+        raise ValueError("Zone ID must be a positive integer.")
+
+    cmd_keyword = "UNBYPASS"
+    cmd_str = f"{cmd_keyword} {zone_id}"
+
+    return create_int_command_request(cmd_str, cmd_keyword, delimiter)
+
+
+def output_on_command(output_id: int, delimiter: str) -> Request[int]:
+    r"""Return a request that turns on an output for a specified duration.
+
+    Args:
+        output_id: Positive integer representing the output ID.
+        delimiter: Line delimiter used in the protocol. e.g. "\r\n"
+
+    Returns:
+        Request object that, when sent, will turn on the output \
+        and return the output ID.
+
+    """
+    if output_id <= 0:
+        raise ValueError("Output ID must be a positive integer.")
+
+    cmd_keyword = "OUTPUTON"
+    cmd_str = f"{cmd_keyword} {output_id}"
+
+    return create_int_command_request(cmd_str, cmd_keyword, delimiter)
+
+
+def output_off_command(output_id: int, delimiter: str) -> Request[int]:
+    r"""Return a request that turns off an output.
+
+    Args:
+        output_id: Positive integer representing the output ID.
+        delimiter: Line delimiter used in the protocol. e.g. "\r\n"
+
+    Returns:
+        Request object that, when sent, will turn off the output \
+        and return the output ID.
+
+    """
+    if output_id <= 0:
+        raise ValueError("Output ID must be a positive integer.")
+
+    cmd_keyword = "OUTPUTOFF"
+    cmd_str = f"{cmd_keyword} {output_id}"
+
+    return create_int_command_request(cmd_str, cmd_keyword, delimiter)
+
+
+def output_state_command(output_id: int, delimiter: str) -> Request[bool]:
+    r"""Return a request that retrieves the state of an output.
+
+    Args:
+        output_id: Positive integer representing the output ID.
+        delimiter: Line delimiter used in the protocol. e.g. "\r\n"
+
+    Returns:
+        Request object that, when sent, will return the output state \
+        as a boolean (True for ON, False for OFF).
+
+    """
+    if output_id <= 0:
+        raise ValueError("Output ID must be a positive integer.")
+
+    cmd_keyword = "OUTPUT"
+    cmd_str = f"{cmd_keyword} {output_id}"
+
+    def parse_int_off_on(response: str) -> FlowResult[bool]:
+        try:
+            parts = response.split()
+            if len(parts) != 2:
+                return Error(ValueError("Response must contain exactly two parts"))
+            num = int(parts[0])
+            if num != output_id:
+                return Error(
+                    ValueError(
+                        f"Output ID in response ({num}) \
+                        does not match request ({output_id})"
+                    )
+                )
+            return on_off_boolean_transformer(parts[1])
+        except ValueError as e:
+            return Error(e)
+
+    def transformer(response: str) -> FlowResult[bool]:
+        return (
+            wait_line(response, delimiter)
+            .bind(create_command_data_transformer(cmd_str, cmd_keyword))
+            .bind(parse_int_off_on)
+        )
+
+    return create_future_request(cmd_str, transformer)

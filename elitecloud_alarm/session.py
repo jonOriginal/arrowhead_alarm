@@ -4,22 +4,25 @@ import asyncio
 import logging
 import uuid
 from asyncio import Event, Lock
-from contextlib import asynccontextmanager
+from contextlib import (
+    AbstractAsyncContextManager,
+    asynccontextmanager,
+)
 from typing import AsyncIterator, Callable, TypeVar
 
-from .commands import string_options_request
+from .commands import string_options_command
 from .const import (
     AUTH_LOGIN_MSG,
     AUTH_PASSWORD_PROMPT,
     AUTH_WELCOME_MSG,
 )
+from .consumers import line_consumer, string_options_consumer
 from .exceptions import (
     InvalidCredentialsError,
     InvalidResponseError,
     MissingCredentialsError,
 )
-from .parsing import line_listener, string_options_listener
-from .types import EciTransport, Request, SerialCredentials, ToggleEvent
+from .types import EciTransport, Login, Request, ToggleEvent
 from .util import add_delimiter_if_missing, cancel_task
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,7 +34,7 @@ class EciSession:
     """Manages an authenticated session with an Eci alarm panel."""
 
     def __init__(
-        self, transport: EciTransport, credentials: SerialCredentials | None = None
+        self, transport: EciTransport, credentials: Login | None = None
     ) -> None:
         """Initialize the Eci session.
 
@@ -40,7 +43,7 @@ class EciSession:
             credentials: Optional serial credentials for authentication.
 
         """
-        self.credentials: SerialCredentials | None = credentials
+        self.credentials: Login | None = credentials
         self.reconnect_delay = 1.0
         self.connection_timeout = 10.0
         self.authentication_timeout = 5.0
@@ -87,7 +90,7 @@ class EciSession:
         """Wait for the connection to be established."""
         try:
             await asyncio.wait_for(
-                self._connected_event.wait_set(), timeout=self.connection_timeout
+                self._connected_event.wait_until_set(), timeout=self.connection_timeout
             )
         except asyncio.TimeoutError:
             raise ConnectionError(
@@ -132,11 +135,11 @@ class EciSession:
         """Continuously read data from the queue and dispatch to callbacks."""
         while True:
             try:
-                data = await self._transport.read()
+                data = await self._transport.read(1024)
                 async with self._callback_lock:
-                    for listener in self._callbacks.values():
+                    for consumer in self._callbacks.values():
                         try:
-                            listener(data)
+                            consumer(data)
                         except Exception as e:
                             _LOGGER.exception("Callback failed: %s", e)
             except asyncio.CancelledError:
@@ -147,9 +150,9 @@ class EciSession:
                 break
 
     async def _reconnect_worker(self) -> None:
-        """While not cancelled, attempt to reconnect when disconnected."""
+        """While not canceled, attempt to reconnect when disconnected."""
         while not self._cancel_event.is_set():
-            await self._connected_event.wait_clear()
+            await self._connected_event.wait_until_clear()
             for attempt in range(self.max_retries):
                 try:
                     await asyncio.wait_for(
@@ -184,8 +187,8 @@ class EciSession:
 
         """
         await self._ensure_connected()
-        listener, future = line_listener(delimiter)
-        async with self._read_context(listener):
+        consumer, future = line_consumer(delimiter)
+        async with self._read_context_raw(consumer):
             return await asyncio.wait_for(future, timeout=timeout)
 
     async def _write_raw(self, data: str) -> None:
@@ -203,7 +206,7 @@ class EciSession:
             self._connected_event.clear()
             raise
 
-    async def writeline(self, data: str, delimiter: str) -> None:
+    async def writeln(self, data: str, delimiter: str) -> None:
         """Write a message with the specified delimiter.
 
         Args:
@@ -217,20 +220,32 @@ class EciSession:
     async def request(
         self, request: Request[T], delimiter: str = "\n", timeout: float | None = None
     ) -> T:
-        """Send a message and register a listener for the response."""
+        """Send a message and register a consumer for the response."""
         await self._ensure_connected()
         return await asyncio.wait_for(
             self._request_raw(request, delimiter), timeout=timeout
         )
 
     async def _request_raw(self, request: Request[T], delimiter: str) -> T:
-        """Send a message and register a listener for the response."""
-        async with self._read_context(request.callback):
+        """Send a message and register a consumer for the response."""
+        async with self._read_context_raw(request.response_callback):
             await self._write_raw(add_delimiter_if_missing(request.data, delimiter))
             return await request.awaitable
 
+    async def read_context(
+        self, callback: Callable[[Exception | str], None]
+    ) -> AbstractAsyncContextManager[None]:
+        """Context manager to register a read callback.
+
+        Args:
+            callback: Callback to invoke on received messages.
+
+        """
+        await self._ensure_connected()
+        return self._read_context_raw(callback)
+
     @asynccontextmanager
-    async def _read_context(
+    async def _read_context_raw(
         self, callback: Callable[[Exception | str], None]
     ) -> AsyncIterator[None]:
         """Context manager to register a read callback.
@@ -239,20 +254,20 @@ class EciSession:
             callback: Callback to invoke on received messages.
 
         """
-        listener_id = str(uuid.uuid4())
+        consumer_id = str(uuid.uuid4())
         async with self._callback_lock:
-            self._callbacks[listener_id] = callback
+            self._callbacks[consumer_id] = callback
         try:
             yield
         finally:
             async with self._callback_lock:
-                self._callbacks.pop(listener_id, None)
+                self._callbacks.pop(consumer_id, None)
 
     async def _authenticate(self) -> None:
         """Handle authentication based on initial prompts."""
-        listener, future = string_options_listener(AUTH_WELCOME_MSG, AUTH_LOGIN_MSG)
+        consumer, future = string_options_consumer(AUTH_WELCOME_MSG, AUTH_LOGIN_MSG)
         try:
-            async with self._read_context(listener):
+            async with self._read_context_raw(callback=consumer):
                 resp = await future
         except ConnectionError as e:
             _LOGGER.error("Authentication detection failed: connection reset")
@@ -275,12 +290,12 @@ class EciSession:
             _LOGGER.error("No credentials provided when required")
             raise MissingCredentialsError()
         try:
-            req = string_options_request(
+            req = string_options_command(
                 self.credentials.username, [AUTH_PASSWORD_PROMPT], False
             )
             await self._request_raw(req, delimiter="\n")
 
-            req = string_options_request(
+            req = string_options_command(
                 self.credentials.password, [AUTH_WELCOME_MSG], False
             )
             await self._request_raw(req, delimiter="\n")

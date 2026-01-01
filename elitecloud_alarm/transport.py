@@ -3,6 +3,9 @@
 import asyncio
 import logging
 import typing
+from typing import override
+
+from elitecloud_alarm.const import DEF_ENCODING, DEF_READ_LENGTH
 
 from .types import EciTransport
 
@@ -18,10 +21,10 @@ class TcpTransport(EciTransport):
         self,
         host: str,
         port: int,
-        encoding: str = "ascii",
+        encoding: str = DEF_ENCODING,
         connect_timeout: float = 10.0,
     ) -> None:
-        """Initialize the TcpTransport.
+        """Initialize the Tcp Transport.
 
         Args:
             host: IP address or hostname of the Eci alarm panel.
@@ -39,16 +42,16 @@ class TcpTransport(EciTransport):
         self._writer: asyncio.StreamWriter | None = None
         self._write_lock = asyncio.Lock()
 
+    @override
     async def connect(self) -> None:
-        """Establish a TCP connection to the Eci alarm panel."""
         _LOGGER.info("Connecting to %s:%s", self.host, self.port)
         self._reader, self._writer = await asyncio.wait_for(
             asyncio.open_connection(self.host, self.port),
             timeout=self.connect_timeout,
         )
 
+    @override
     async def disconnect(self) -> None:
-        """Close the TCP connection to the Eci alarm panel."""
         if self._writer:
             _LOGGER.info("Disconnecting TCP transport")
             self._writer.close()
@@ -56,13 +59,8 @@ class TcpTransport(EciTransport):
             self._writer = None
             self._reader = None
 
+    @override
     async def write(self, data: str) -> None:
-        """Write string data to the TCP connection.
-
-        Args:
-            data: String data to send.
-
-        """
         if not self._writer:
             raise ConnectionError("TCP transport not connected")
 
@@ -71,15 +69,8 @@ class TcpTransport(EciTransport):
             self._writer.write(data.encode(self.encoding))
             await self._writer.drain()
 
-    async def read(self, n: int = 1024) -> str:
-        """Read string data from the TCP connection.
-
-        Args:
-            n: Maximum number of bytes to read.
-
-        Returns: Decoded string data read from the connection.
-
-        """
+    @override
+    async def read(self, n: int = DEF_READ_LENGTH) -> str:
         if not self._reader:
             raise ConnectionError("TCP transport not connected")
 
