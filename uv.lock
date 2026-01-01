@@ -11,14 +11,14 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
-linting = [
-    { name = "ruff" },
-]
-tests = [
+dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+]
+linting = [
+    { name = "ruff" },
 ]
 typing = [
     { name = "ty" },
@@ -28,13 +28,13 @@ typing = [
 requires-dist = [{ name = "failure", specifier = ">=1.0.1" }]
 
 [package.metadata.requires-dev]
-linting = [{ name = "ruff", specifier = ">=0.14.10" }]
-tests = [
+dev = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-mock", specifier = ">=3.15.1" },
 ]
+linting = [{ name = "ruff", specifier = ">=0.14.10" }]
 typing = [{ name = "ty", specifier = ">=0.0.7" }]
 
 [[package]]
