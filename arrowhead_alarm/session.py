@@ -39,7 +39,7 @@ class EciSession:
         """Initialize the Eci session.
 
         Args:
-            transport: The Eci transport to use for communication.
+            transport: The Panel transport to use for communication.
             credentials: Optional serial credentials for authentication.
 
         """
