@@ -8,10 +8,10 @@ from .types import (
     Area,
     ArmingMode,
     ConnectionState,
-    EciTransport,
     Login,
     Output,
     PanelState,
+    PanelTransport,
     PanelVersion,
     VersionInfo,
     Zone,
@@ -20,13 +20,13 @@ from .types import (
 __all__ = [
     "PanelState",
     "AlarmState",
-    "create_tcp_client",
+    "create_eci_tcp_client",
     "Area",
     "Zone",
     "Output",
     "ArmingMode",
     "ConnectionState",
-    "EciTransport",
+    "PanelTransport",
     "Login",
     "PanelVersion",
     "VersionInfo",
@@ -34,7 +34,7 @@ __all__ = [
 ]
 
 
-def create_tcp_client(
+def create_eci_tcp_client(
     host: str, port: int, username: str | None = None, password: str | None = None
 ) -> EciClient:
     """Create an EciClient instance.

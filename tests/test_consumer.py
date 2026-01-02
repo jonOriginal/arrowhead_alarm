@@ -19,7 +19,7 @@ from arrowhead_alarm.consumers import (
     create_sliding_timeout_consumer,
     line_consumer,
 )
-from arrowhead_alarm.transformers import wait_lines
+from arrowhead_alarm.transformers import create_wait_lines_transformer
 from arrowhead_alarm.types import ArmingMode
 
 
@@ -92,9 +92,7 @@ async def test_line_consumer():
 
 @pytest.mark.asyncio
 async def test_line_count_consumer():
-    def processor(response: str) -> FlowResult[list[str]]:
-        return wait_lines(response, 3, "\n")
-
+    processor = create_wait_lines_transformer(3, "\n")
     line_waiter, fut = create_future_consumer(processor)
     line_waiter("line1\nline2\nline3\nline4\n")
     lines = await fut
@@ -105,9 +103,7 @@ async def test_line_count_consumer():
 
 @pytest.mark.asyncio
 async def test_line_count_consumer_incomplete():
-    def processor(response: str) -> FlowResult[list[str]]:
-        return wait_lines(response, 3, "\n")
-
+    processor = create_wait_lines_transformer(3, "\n")
     line_waiter, fut = create_future_consumer(processor)
     line_waiter("line1\nline2\npartial_line")
     with pytest.raises(asyncio.TimeoutError):
@@ -116,9 +112,7 @@ async def test_line_count_consumer_incomplete():
 
 @pytest.mark.asyncio
 async def test_line_count_consumer_multiple_feeds():
-    def processor(response: str) -> FlowResult[list[str]]:
-        return wait_lines(response, 4, "\n")
-
+    processor = create_wait_lines_transformer(4, "\n")
     line_waiter, fut = create_future_consumer(processor)
     line_waiter("line1\nline2\n")
     await asyncio.sleep(0.2)

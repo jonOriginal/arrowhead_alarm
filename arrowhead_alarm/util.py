@@ -20,9 +20,12 @@ from .types import (
     ArmingCapabilities,
     ArmingMode,
     DisarmingCapabilities,
+    Fail,
+    Outcome,
     PanelVersion,
     ProtocolMode,
     Status,
+    Success,
     VersionInfo,
 )
 
@@ -229,7 +232,7 @@ STATUS_RE: Final = re.compile(
 )
 
 
-def parse_status(message: str) -> Status:
+def parse_status(message: str) -> Outcome[Status]:
     """Parse a status message.
 
     Args:
@@ -244,7 +247,7 @@ def parse_status(message: str) -> Status:
     """
     match = STATUS_RE.match(message)
     if not match:
-        raise ValueError(f"Invalid status format: {message}")
+        return Fail(ValueError(f"Invalid status message format: {message}"))
 
     code_str = match.group("status")
     number_str = match.group("number")
@@ -253,15 +256,17 @@ def parse_status(message: str) -> Status:
     extender_code_str = match.group("extender_status")
     extender_number_str = match.group("extender_number")
 
-    return Status(
-        code=code_str,
-        number=int(number_str) if number_str is not None else None,
-        timestamp=float(timestamp_str) if timestamp_str is not None else None,
-        user_number=int(user_number_str) if user_number_str is not None else None,
-        expander_code=extender_code_str,
-        expander_number=int(extender_number_str)
-        if extender_number_str is not None
-        else None,
+    return Success(
+        Status(
+            code=code_str,
+            number=int(number_str) if number_str is not None else None,
+            timestamp=float(timestamp_str) if timestamp_str is not None else None,
+            user_number=int(user_number_str) if user_number_str is not None else None,
+            expander_code=extender_code_str,
+            expander_number=int(extender_number_str)
+            if extender_number_str is not None
+            else None,
+        )
     )
 
 

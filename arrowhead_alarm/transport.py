@@ -11,14 +11,14 @@ except ImportError:
 
 from arrowhead_alarm.const import DEF_ENCODING, DEF_READ_LENGTH
 
-from .types import EciTransport
+from .types import PanelTransport
 
 _LOGGER = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
 
-class TcpTransport(EciTransport):
+class TcpTransport(PanelTransport):
     """Asyncio-based TCP transport for Arrowhead alarm system."""
 
     def __init__(

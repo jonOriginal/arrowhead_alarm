@@ -8,12 +8,15 @@ from arrowhead_alarm.messages import (
 )
 from arrowhead_alarm.types import (
     Error,
+    Fail,
+    Flow,
     FlowResult,
     Go,
+    Outcome,
     PanelState,
     PanelVersion,
     Reject,
-    Status,
+    Success,
     Transformer,
     Wait,
 )
@@ -28,22 +31,24 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
-def apply_and_catch(data: T, func: Callable[[T], U]) -> FlowResult[U]:
-    """Apply a function to the data and catch exceptions.
+def create_transformer(func: Callable[[T], U]) -> Transformer[T, U]:
+    """Create a Transformer from a simple function.
 
     Args:
-        data: data to process.
-        func: Function to apply to the data.
+        func: Function to convert T to U.
 
-    Returns:
-        FlowResult containing the processing result or an Error.
+    Returns: Transformer that applies the function.
 
     """
-    try:
-        result = func(data)
-        return Go(result)
-    except Exception as e:
-        return Error(e)
+
+    def transformer(data: T) -> FlowResult[U]:
+        try:
+            result = func(data)
+            return Go(result)
+        except Exception as e:
+            return Error(e)
+
+    return transformer
 
 
 def transform_and_catch(data: T, transformer: Transformer[T, U]) -> FlowResult[U]:
@@ -77,6 +82,24 @@ def command_ok_or_err(prefix: str) -> FlowResult[bool]:
         return Go(False)
     else:
         return Reject()
+
+
+def outcome_transformer(outcome: Outcome[T]) -> FlowResult[T]:
+    """Transform an Outcome into a FlowResult.
+
+    Args:
+        outcome: Outcome to transform.
+
+    Returns: FlowResult containing the value or an Error.
+
+    """
+    match outcome:
+        case Success(value):
+            return Go(value)
+        case Fail(exception):
+            return Error(exception)
+        case _:
+            return Reject()
 
 
 def on_off_boolean_transformer(data: str) -> FlowResult[bool]:
@@ -122,29 +145,67 @@ def check_expected_keyword(
         return Reject()
 
 
-def wait_any_complete_lines(data: str, delimiter: str) -> FlowResult[list[str]]:
-    """Check if the data contains any complete lines."""
-    lines = split_complete_lines(data, delimiter)
-    if len(lines) == 0:
+def create_wait_any_complete_line_transformer(
+    delimiter: str,
+) -> Transformer[str, list[str]]:
+    """Wait for any complete lines in the data.
+
+    Args:
+        delimiter: Delimiter used to identify line endings.
+
+    Returns:
+        Transformer that waits for any complete lines.
+
+    """
+
+    def transformer(data: str) -> FlowResult[list[str]]:
+        lines = split_complete_lines(data, delimiter)
+        if lines:
+            return Go[list[str]](lines)
         return Wait()
-    return Go(lines)
+
+    return transformer
 
 
-def wait_lines(data: str, expected_lines: int, delimiter: str) -> FlowResult[list[str]]:
-    """Check if the data contains the expected number of complete lines."""
-    lines = split_complete_lines(data, delimiter)
-    if len(lines) == expected_lines:
-        return Go(lines)
-    return Wait()
+def create_wait_lines_transformer(
+    expected_lines: int, delimiter: str
+) -> Transformer[str, list[str]]:
+    """Wait for a specific number of complete lines.
+
+    Args:
+        expected_lines: Number of complete lines to wait for.
+        delimiter: Delimiter used to identify line endings.
+
+    Returns:
+        Transformer that waits for the specified number of complete lines.
+
+    """
+
+    def transformer(data: str) -> FlowResult[list[str]]:
+        lines = split_complete_lines(data, delimiter)
+        if len(lines) == expected_lines:
+            return Go(lines)
+        return Wait()
+
+    return transformer
 
 
-def wait_line(data: str, delimiter: str) -> FlowResult[str]:
-    """Wait for a single complete line."""
+def create_wait_line_transformer(delimiter: str) -> Transformer[str, str]:
+    """Return Transformer that waits for a single complete line.
+
+    Args:
+        delimiter: Delimiter used to identify line endings.
+
+    Returns: Transformer that waits for a single complete line.
+
+    """
 
     def first_line_transformer(lines: list[str]) -> FlowResult[str]:
         return Go(lines[0])
 
-    return wait_lines(data, 1, delimiter).bind(first_line_transformer)
+    return (
+        Flow() >> create_wait_lines_transformer(1, delimiter) >> first_line_transformer
+    )
 
 
 def create_line_join_transformer(joiner: str) -> Transformer[list[str], str]:
@@ -164,7 +225,7 @@ def create_line_join_transformer(joiner: str) -> Transformer[list[str], str]:
     return transformer
 
 
-def create_split_lines_transformer(delimiter: str) -> Transformer[str, list[str]]:
+def create_split_transformer(delimiter: str) -> Transformer[str, list[str]]:
     """Return Transformer that splits data into lines using the specified delimiter.
 
     Args:
@@ -326,12 +387,11 @@ def create_command_int_data_transformer(
         Transformer that processes the response string and extracts integer data.
 
     """
-    command_transformer = create_command_data_transformer(command, keyword)
-
-    def transformer(response: str) -> FlowResult[int]:
-        return command_transformer(response).bind(str_to_int_transformer)
-
-    return transformer
+    return (
+        Flow()
+        >> create_command_data_transformer(command, keyword)
+        >> str_to_int_transformer
+    )
 
 
 def create_command_no_data_transformer(
@@ -353,29 +413,67 @@ def create_command_no_data_transformer(
         Transformer that processes the response string.
 
     """
-    command_transformer = create_command_data_transformer(command, keyword)
+    return (
+        Flow()
+        >> create_command_data_transformer(command, keyword)
+        >> result_discard_transformer
+    )
 
-    def transformer(response: str) -> FlowResult[None]:
-        return command_transformer(response).bind(result_discard_transformer)
+
+panel_state_message_transformer = (
+    Flow()
+    >> create_transformer(parse_status)
+    >> outcome_transformer
+    >> create_transformer(get_status_operation)
+)
+
+
+def create_simple_panel_state_transformer(
+    code: str, operation: Callable[[PanelState], None]
+) -> Transformer[str, Callable[[PanelState], None]]:
+    """Return a transformer that applies a simple PanelState operation if the code matches.
+
+    Args:
+        code: Code string to match.
+        operation: Operation to apply to the PanelState.
+
+    Returns: Transformer that applies the operation if the code matches.
+
+    """  # noqa: E501
+
+    def transformer(data: str) -> FlowResult[Callable[[PanelState], None]]:
+        if data.strip() == code:
+            return Go[Callable[[PanelState], None]](operation)
+        return Reject()
 
     return transformer
 
 
-def panel_state_message_transformer(
-    data: str,
-) -> FlowResult[Callable[[PanelState], None]]:
-    """Return a FlowResult containing the operation to apply to PanelStatus.
+def create_integer_panel_state_transformer(
+    code: str, operation: Callable[[int, PanelState], None]
+) -> Transformer[str, Callable[[PanelState], None]]:
+    """Return a transformer that applies an integer PanelState operation if the code matches.
 
     Args:
-        data: Status line data string.
+        code: Code string to match.
+        operation: Operation to apply to the PanelState with an integer parameter.
 
-    Returns: FlowResult containing the operation to apply to PanelStatus.
+    Returns:
+        Transformer that applies the operation if the code matches.
 
-    """
+    """  # noqa: E501
 
-    def status_transformer(
-        status: Status,
-    ) -> FlowResult[Callable[[PanelState], None]]:
-        return apply_and_catch(status, get_status_operation)
+    def transformer(parts: list[str]) -> FlowResult[Callable[[PanelState], None]]:
+        if parts[0] != code:
+            return Reject()
+        try:
+            num = int(parts[1])
 
-    return apply_and_catch(data, parse_status).bind(status_transformer)
+            def apply_operation(p: PanelState) -> None:
+                operation(num, p)
+
+            return Go[Callable[[PanelState], None]](apply_operation)
+        except ValueError:
+            return Error(ValueError(f"Invalid integer in panel status: {parts}"))
+
+    return Flow() >> create_split_transformer(" ") >> transformer

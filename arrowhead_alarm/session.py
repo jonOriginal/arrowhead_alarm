@@ -22,7 +22,7 @@ from .exceptions import (
     InvalidResponseError,
     MissingCredentialsError,
 )
-from .types import EciTransport, Login, Request, ToggleEvent
+from .types import Login, PanelTransport, Request, ToggleEvent
 from .util import add_delimiter_if_missing, cancel_task
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class EciSession:
     """Manages an authenticated session with an Arrowhead alarm panel."""
 
     def __init__(
-        self, transport: EciTransport, credentials: Login | None = None
+        self, transport: PanelTransport, credentials: Login | None = None
     ) -> None:
         """Initialize the Eci session.
 
@@ -60,7 +60,7 @@ class EciSession:
         self._callback_lock: Lock = Lock()
         self._callbacks: dict[str, Callable[[str | Exception], None]] = {}
 
-        self._transport: EciTransport = transport
+        self._transport: PanelTransport = transport
 
     async def connect(self) -> None:
         """Establish connection and authenticate. Returns when connected.

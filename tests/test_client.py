@@ -7,7 +7,7 @@ from typing import Awaitable, Callable
 
 import pytest
 
-from arrowhead_alarm import VersionInfo, create_tcp_client
+from arrowhead_alarm import VersionInfo, create_eci_tcp_client
 
 
 def no_login_handler(reader: StreamReader, writer: StreamWriter) -> Task[None]:
@@ -36,7 +36,7 @@ async def open_mock(handler: Callable[[StreamReader, StreamWriter], Awaitable[No
 @pytest.mark.asyncio
 async def test_client_initialization() -> None:
     host, port = await open_mock(no_login_handler)
-    client = create_tcp_client(host, port)
+    client = create_eci_tcp_client(host, port)
     await client.connect()
 
     assert client.is_connected

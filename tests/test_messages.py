@@ -16,8 +16,7 @@ from arrowhead_alarm.util import parse_status
     ],
 )
 def test_parse_code_only(message: str, expected_code: str) -> None:
-    status = parse_status(message)
-
+    status = parse_status(message).unwrap()
     assert status.code == expected_code
     assert status.number is None
     assert status.timestamp is None
@@ -36,7 +35,7 @@ def test_parse_code_only(message: str, expected_code: str) -> None:
     ],
 )
 def test_parse_numbered_code_valid(message: str, code: str, number: int) -> None:
-    status = parse_status(message)
+    status = parse_status(message).unwrap()
 
     assert status.code == code
     assert status.number == number
@@ -52,7 +51,7 @@ def test_parse_numbered_code_valid(message: str, code: str, number: int) -> None
     ],
 )
 def test_parse_timestamp(message: str, number: int, timestamp: float) -> None:
-    status = parse_status(message)
+    status = parse_status(message).unwrap()
 
     assert status.number == number
     assert status.timestamp == timestamp
@@ -68,7 +67,7 @@ def test_parse_timestamp(message: str, number: int, timestamp: float) -> None:
     ],
 )
 def test_parse_user_number(message: str, number: int, user_number: int) -> None:
-    status = parse_status(message)
+    status = parse_status(message).unwrap()
 
     assert status.number == number
     assert status.user_number == user_number
@@ -84,7 +83,7 @@ def test_parse_user_number(message: str, number: int, user_number: int) -> None:
     ],
 )
 def test_parse_extender_status(message: str, ext_code: str, ext_number: int) -> None:
-    status = parse_status(message)
+    status = parse_status(message).unwrap()
 
     assert status.expander_code == ext_code
     assert status.expander_number == ext_number
@@ -93,7 +92,7 @@ def test_parse_extender_status(message: str, ext_code: str, ext_number: int) -> 
 
 
 def test_parse_full_combination() -> None:
-    status = parse_status("ALM12-U7 EX3")
+    status = parse_status("ALM12-U7 EX3").unwrap()
 
     assert status.code == "ALM"
     assert status.number == 12
@@ -111,7 +110,7 @@ def test_parse_full_combination() -> None:
 
 
 def test_parse_number_timestamp_extender() -> None:
-    status = parse_status("ACP5-10.5 IO2")
+    status = parse_status("ACP5-10.5 IO2").unwrap()
 
     assert status.number == 5
     assert status.timestamp == 10.5
@@ -140,4 +139,4 @@ def test_parse_number_timestamp_extender() -> None:
 )
 def test_parse_invalid_formats(message: str) -> None:
     with pytest.raises(ValueError):
-        parse_status(message)
+        parse_status(message).unwrap()

@@ -10,16 +10,22 @@ from typing import (
     Callable,
     Dict,
     Generic,
-    Literal,
     TypeAlias,
     TypeVar,
-    Union,
 )
 
 try:
     from typing import override  # ty:ignore[unresolved-import]
 except ImportError:
     from typing_extensions import override  # ty:ignore[unresolved-import]
+
+
+In = TypeVar("In")
+Out = TypeVar("Out")
+Next = TypeVar("Next")
+
+T = TypeVar("T")
+F = TypeVar("F")
 
 
 @dataclass
@@ -49,7 +55,7 @@ class Login:
     password: str
 
 
-class EciTransport(ABC):
+class PanelTransport(ABC):
     """Abstract base class for Arrowhead alarm panel transport."""
 
     @abstractmethod
@@ -370,13 +376,6 @@ class ToggleEvent:
         await self._clear_event.wait()
 
 
-In = TypeVar("In")
-Out = TypeVar("Out")
-
-T = TypeVar("T")
-F = TypeVar("F")
-
-
 class FlowResult(Generic[T], ABC):
     """Represents the result of a flow operation."""
 
@@ -439,26 +438,58 @@ class Error(FlowResult[T]):
         return Error(self.error)
 
 
+class Outcome(Generic[T], ABC):
+    """Base class for outcome results."""
+
+    @abstractmethod
+    def unwrap(self) -> T:
+        """Unwrap the outcome to get the value or raise the error.
+
+        Returns: The value if success.
+
+        Raises: The error if failure.
+
+        """
+        ...
+
+    @abstractmethod
+    def is_success(self) -> bool:
+        """Check if the outcome is a success.
+
+        Returns: True if success, False otherwise.
+
+        """
+        ...
+
+
 @dataclass(frozen=True)
-class Success(Generic[T]):
+class Success(Outcome[T]):
     """Represents a successful outcome."""
 
     value: T
-    ok: Literal[True] = True
+
+    @override
+    def is_success(self) -> bool:
+        return True
+
+    @override
+    def unwrap(self) -> T:
+        return self.value
 
 
 @dataclass(frozen=True)
-class Fail(Generic[F]):
+class Fail(Outcome[T]):
     """Represents a failed outcome."""
 
-    error: F
-    is_success: Literal[False] = False
+    error: Exception
 
+    @override
+    def is_success(self) -> bool:
+        return False
 
-Param = TypeVar("Param")
-
-
-Outcome: TypeAlias = Union[Success[T], Fail[Exception]]
+    @override
+    def unwrap(self) -> T:
+        raise self.error
 
 
 @dataclass
@@ -468,3 +499,61 @@ class Request(Generic[T]):
     data: str
     response_callback: Consumer[str]
     awaitable: Awaitable[T]
+
+
+class FlowFunc(Generic[In, Out]):
+    """Wraps a function that returns FlowResult, allows >> composition."""
+
+    def __init__(self, func: Callable[[In], "FlowResult[Out]"]) -> None:
+        """Initialize the FlowFunc with the given function."""
+        self.func: Callable[[In], "FlowResult[Out]"] = func
+
+    def __rshift__(
+        self, other: Callable[[Out], "FlowResult[Next]"]
+    ) -> "FlowFunc[In, Next]":
+        """Enable the use of the >> operator to chain FlowFuncs.
+
+        Args:
+            other: A function that takes a value of type Out and returns a \
+            FlowResult of type Next.
+
+        Returns: A new FlowFunc that represents the chained operation.
+
+        """
+
+        def chained_func(x: In) -> "FlowResult[Next]":
+            result = self.func(x)
+            return result.bind(other)
+
+        return FlowFunc(chained_func)
+
+    def __call__(self, x: In) -> "FlowResult[Out]":
+        """Call the wrapped function.
+
+        Args:
+            x: Input value of type In.
+
+        Returns: A FlowResult of type Out.
+
+        """
+        return self.func(x)
+
+
+class Flow:
+    """Base class for flow operations."""
+
+    def __init__(self) -> None:
+        """Initialize the Flow."""
+        pass
+
+    def __rshift__(self, other: Callable[[In], FlowResult[Out]]) -> FlowFunc[In, Out]:
+        """Enable the use of the >> operator to create a FlowFunc.
+
+        Args:
+            other: A function that takes a value of type In and returns a \
+            FlowResult of type Out.
+
+        Returns: A FlowFunc that wraps the given function.
+
+        """
+        return FlowFunc(other)

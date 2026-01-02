@@ -7,17 +7,17 @@ from .transformers import (
     check_string_with_options,
     create_command_data_transformer,
     create_line_join_transformer,
-    create_split_lines_transformer,
-    create_strip_transformer,
+    create_split_transformer,
+    create_wait_any_complete_line_transformer,
+    create_wait_line_transformer,
     panel_state_message_transformer,
     transform_and_catch,
-    wait_any_complete_lines,
-    wait_line,
 )
 from .types import (
     Consumer,
     Error,
     Fail,
+    Flow,
     FlowResult,
     Go,
     Outcome,
@@ -186,11 +186,7 @@ def line_consumer(delimiter: str) -> Tuple[Consumer[str], Future[str]]:
     Returns: Tuple containing the consumer and the Future.
 
     """
-
-    def transformer(data: str) -> FlowResult[str]:
-        return wait_line(data, delimiter).bind(create_strip_transformer())
-
-    return create_future_consumer(transformer)
+    return create_future_consumer(create_wait_line_transformer(delimiter))
 
 
 def string_options_consumer(
@@ -228,61 +224,32 @@ def create_status_consumer(
     """
     command = "STATUS"
 
-    def complete_line_transformer(data: str) -> FlowResult[list[str]]:
-        return wait_any_complete_lines(data, delimiter)
-
-    def transformer(data: str) -> FlowResult[list[str]]:
-        return (
-            complete_line_transformer(data)
-            .bind(create_line_join_transformer(" "))
-            .bind(create_command_data_transformer(command, command))
-            .bind(create_split_lines_transformer(" "))
-        )
+    transformer = (
+        Flow()
+        >> create_wait_any_complete_line_transformer(delimiter)
+        >> create_line_join_transformer(" ")
+        >> create_command_data_transformer(command, command)
+        >> create_split_transformer(" ")
+    )
 
     return create_sliding_timeout_consumer(transformer, timeout)
-
-
-def simple_panel_state_transformer(
-    code: str, operation: Callable[[PanelState], None]
-) -> Transformer[str, Callable[[PanelState], None]]:
-    """Process panel status messages based on the provided code and operation."""
-
-    def transformer(data: str) -> FlowResult[Callable[[PanelState], None]]:
-        if data.strip() == code:
-            return Go[Callable[[PanelState], None]](operation)
-        return Reject()
-
-    return transformer
-
-
-def create_integer_panel_state_transformer(
-    code: str, operation: Callable[[int, PanelState], None]
-) -> Transformer[str, Callable[[PanelState], None]]:
-    """Return a transformer that handles panel status messages with integer values."""
-
-    def transformer(data: str) -> FlowResult[Callable[[PanelState], None]]:
-        parts = data.strip().split(" ", 1)
-        if parts[0] != code:
-            return Reject()
-        try:
-            num = int(parts[1])
-
-            def apply_operation(p: PanelState) -> None:
-                operation(num, p)
-
-            return Go[Callable[[PanelState], None]](apply_operation)
-        except ValueError:
-            return Error(ValueError(f"Invalid integer in panel status: {data}"))
-
-    return transformer
 
 
 def panel_state_consumer(
     delimiter: str,
 ) -> Tuple[Consumer[str], Queue[Outcome[Callable[[PanelState], None]]]]:
-    """Return a consumer that processes panel status lines."""
+    """Return a consumer and queue that processes panel state messages.
 
-    def transformer(data: str) -> FlowResult[Callable[[PanelState], None]]:
-        return wait_line(data, delimiter).bind(panel_state_message_transformer)
+    Args:
+        delimiter: Line ending delimiter.
+
+    Returns: Tuple containing the consumer and the Queue.
+
+    """
+    transformer = (
+        Flow()
+        >> create_wait_line_transformer(delimiter)
+        >> panel_state_message_transformer
+    )
 
     return create_queue_consumer(transformer)

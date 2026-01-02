@@ -30,12 +30,12 @@ from .types import (
     AlarmState,
     Area,
     ArmingMode,
-    EciTransport,
     Expander,
     Fail,
     Login,
     Output,
     PanelState,
+    PanelTransport,
     PanelVersion,
     ProtocolMode,
     Success,
@@ -51,7 +51,7 @@ class EciClient:
     """Client for Arrowhead alarm systems over IP."""
 
     def __init__(
-        self, transport: EciTransport, credentials: Login | None = None
+        self, transport: PanelTransport, credentials: Login | None = None
     ) -> None:
         """Initialize the Arrowhead alarm client.
 

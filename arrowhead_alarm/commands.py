@@ -12,18 +12,19 @@ from .transformers import (
     create_command_data_transformer,
     create_command_int_data_transformer,
     create_command_no_data_transformer,
-    create_split_lines_transformer,
+    create_split_transformer,
     create_strip_transformer,
+    create_wait_any_complete_line_transformer,
+    create_wait_line_transformer,
+    create_wait_lines_transformer,
     on_off_boolean_transformer,
     panel_state_message_transformer,
     panel_version_transformer,
-    wait_any_complete_lines,
-    wait_line,
-    wait_lines,
 )
 from .types import (
     ArmingMode,
     Error,
+    Flow,
     FlowResult,
     Go,
     PanelState,
@@ -68,11 +69,11 @@ def create_int_command_request(
         Request object that, when sent, will return an integer response.
 
     """
-
-    def transformer(response: str) -> FlowResult[int]:
-        return wait_line(response, delimiter).bind(
-            create_command_int_data_transformer(cmd_str, cmd_keyword)
-        )
+    transformer = (
+        Flow()
+        >> create_wait_line_transformer(delimiter)
+        >> create_command_int_data_transformer(cmd_str, cmd_keyword)
+    )
 
     return create_future_request(cmd_str, transformer)
 
@@ -88,13 +89,13 @@ def version_command(delimiter: str) -> Request[PanelVersion]:
     """
     cmd_str = "Version"
 
-    def transformer(response: str) -> FlowResult[PanelVersion]:
-        return (
-            wait_line(response, delimiter)
-            .bind(create_command_data_transformer(cmd_str, cmd_str))  # noqa: F821
-            .bind(create_strip_transformer('"'))
-            .bind(panel_version_transformer)
-        )
+    transformer = (
+        Flow()
+        >> create_wait_line_transformer(delimiter)
+        >> create_command_data_transformer(cmd_str, cmd_str)
+        >> create_strip_transformer('"')
+        >> panel_version_transformer
+    )
 
     return create_future_request(cmd_str, transformer)
 
@@ -148,13 +149,13 @@ def mode_command(mode: ProtocolMode) -> Request[str]:
                 )
             )
 
-    def transformer(response: str) -> FlowResult[str]:
-        return (
-            wait_lines(response, 2, delimiter)
-            .bind(create_line_join_transformer(" "))
-            .bind(create_command_int_data_transformer(cmd_str, keyword))
-            .bind(mode_checker)
-        )
+    transformer = (
+        Flow()
+        >> create_wait_lines_transformer(2, delimiter)
+        >> create_line_join_transformer(" ")
+        >> create_command_int_data_transformer(cmd_str, keyword)
+        >> mode_checker
+    )
 
     return create_future_request(cmd_str, transformer)
 
@@ -182,10 +183,11 @@ def arm_user_command(
     command_keyword = get_arming_keyword(mode)
     command = f"{command_keyword} {user_id} {pin}"
 
-    def transformer(response: str) -> FlowResult[int]:
-        return wait_line(response, delimiter).bind(
-            create_command_int_data_transformer(command, command_keyword)
-        )
+    transformer = (
+        Flow()
+        >> create_wait_line_transformer(delimiter)
+        >> create_command_int_data_transformer(command, command_keyword)
+    )
 
     return create_future_request(command, transformer)
 
@@ -249,10 +251,11 @@ def arm_no_pin_command(mode: ArmingMode, delimiter: str) -> Request[None]:
     """
     cmd_str = get_arming_keyword(mode)
 
-    def transformer(response: str) -> FlowResult[None]:
-        return wait_line(response, delimiter).bind(
-            create_command_no_data_transformer(cmd_str, cmd_str)
-        )
+    transformer = (
+        Flow()
+        >> create_wait_line_transformer(delimiter)
+        >> create_command_no_data_transformer(cmd_str, cmd_str)
+    )
 
     return create_future_request(cmd_str, transformer)
 
@@ -304,14 +307,14 @@ def status_command(delimiter: str) -> Request[list[Callable[[PanelState], None]]
                     continue
         return Go(ops)
 
-    def transformer(response: str) -> FlowResult[list[Callable[[PanelState], None]]]:
-        return (
-            wait_any_complete_lines(response, delimiter)
-            .bind(create_line_join_transformer(" "))
-            .bind(create_command_data_transformer(cmd_str, cmd_str))
-            .bind(create_split_lines_transformer(" "))
-            .bind(operation_transformer)
-        )
+    transformer = (
+        Flow()
+        >> create_wait_any_complete_line_transformer(delimiter)
+        >> create_line_join_transformer(" ")
+        >> create_command_data_transformer(cmd_str, cmd_str)
+        >> create_split_transformer(" ")
+        >> operation_transformer
+    )
 
     listener, fut = create_sliding_timeout_consumer(transformer, timeout=0.1)
     return Request(data=cmd_str, response_callback=listener, awaitable=fut)
@@ -415,11 +418,11 @@ def get_output_state_command(output_id: int, delimiter: str) -> Request[bool]:
         except ValueError as e:
             return Error(e)
 
-    def transformer(response: str) -> FlowResult[bool]:
-        return (
-            wait_line(response, delimiter)
-            .bind(create_command_data_transformer(cmd_str, cmd_keyword))
-            .bind(parse_int_off_on)
-        )
+    transformer = (
+        Flow()
+        >> create_wait_line_transformer(delimiter)
+        >> create_command_data_transformer(cmd_str, cmd_keyword)
+        >> parse_int_off_on
+    )
 
     return create_future_request(cmd_str, transformer)
