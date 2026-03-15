@@ -63,7 +63,7 @@ def transform_and_catch(data: T, transformer: Transformer[T, U]) -> FlowResult[U
     """
     try:
         return transformer(data)
-    except Exception as e:
+    except Exception as e: 
         return Error(e)
 
 
